@@ -19,8 +19,11 @@ def get_divisors(n):
 
 def find_eta_multiplier(target_mod, target_rem, level, base_eta_profile, min_exponent=0, max_exponent=20):
     divisors = get_divisors(level)
+    
+    # We use all divisors to ensure prime modulos (like 43) work perfectly
     allowed_divisors = divisors 
     
+    # Search space now correctly handles negative minimums
     search_space = [range(min_exponent, max_exponent + 1) for _ in allowed_divisors]
     valid_multipliers = []
 
@@ -39,6 +42,7 @@ def find_eta_multiplier(target_mod, target_rem, level, base_eta_profile, min_exp
             
         is_holomorphic = True
         for d in divisors:
+            # Using Fraction ensures perfect math for cusp checks
             cusp_sum = sum((Fraction(gcd(d, delta)**2, delta) * r) for delta, r in total_profile.items())
             if cusp_sum < 0:
                 is_holomorphic = False
@@ -61,40 +65,43 @@ def find_eta_multiplier(target_mod, target_rem, level, base_eta_profile, min_exp
     valid_multipliers.sort(key=lambda x: x['weight_k'])
     return valid_multipliers
 
-# --- UI Redesign ---
+# --- UI Redesign (The "Desmos" Feel) ---
+
 st.title("✨ Modular Form Eta-Multiplier Finder")
 st.markdown("Find the optimal $\eta$-quotient multiplier to prove partition congruences via Sturm's bound.")
 
 # Create Tabs for a cleaner layout
 tab_calc, tab_history = st.tabs(["🧮 Calculator", "📜 Search History"])
 
+# --- 2. Sidebar for Inputs (Left Panel) ---
 with st.sidebar:
     st.header("⚙️ Configuration")
     
     st.subheader("Target Congruence")
     col1, col2 = st.columns(2)
     with col1:
-        target_mod = st.number_input("Modulo (t)", min_value=1, value=3)
+        target_mod = st.number_input("Modulo (t)", min_value=1, value=24)
     with col2:
-        target_rem = st.number_input("Remainder (r)", min_value=0, value=2)
+        target_rem = st.number_input("Remainder (r)", min_value=0, value=16)
         
     st.subheader("Search Parameters")
-    level = st.number_input("Search Level (N)", min_value=1, value=12)
+    level = st.number_input("Search Level (N)", min_value=1, value=48)
     
     st.markdown("**Base Eta Profile**")
-    profile_input = st.text_input("Profile Input", value="1:-1, 2:2, 4:-3", label_visibility="collapsed")
+    st.markdown("*Format: `arg:power` (e.g., `4:1` for $\eta(4z)^1$)*")
+    profile_input = st.text_input("Profile Input", value="4:1, 6:2, 1:-1, 3:-1, 12:-1", label_visibility="collapsed")
     
     st.markdown("**Exponent Search Range**")
     exp_col1, exp_col2 = st.columns(2)
     with exp_col1:
         min_exp = st.number_input("Min (Negative)", value=-3)
     with exp_col2:
-        max_exp = st.number_input("Max (Positive)", value=5)
+        max_exp = st.number_input("Max (Positive)", value=20)
         
     st.markdown("---")
     calculate_btn = st.button("🔍 Find Multipliers", use_container_width=True, type="primary")
 
-# --- Tab 1: Calculator Panel ---
+# --- 3. Main Panel for Results (Right Panel) ---
 with tab_calc:
     if calculate_btn:
         with st.spinner(f"Crunching the numbers between {min_exp} and {max_exp}..."):
@@ -115,7 +122,7 @@ with tab_calc:
                     """)
                     st.divider()
                     
-                    # Save to History
+                    # --- Save to History ---
                     best_latex_str = ""
                     for divisor, power in results[0]['multiplier_exponents'].items():
                         if power != 0:
@@ -136,7 +143,7 @@ with tab_calc:
                     st.session_state.history.insert(0, history_record)
                     st.session_state.history = st.session_state.history[:300]
                     
-                    # Display Results
+                    # --- Display Results ---
                     for i, best in enumerate(results[:10]):
                         with st.container():
                             st.subheader(f"Option {i+1}")
@@ -163,15 +170,14 @@ with tab_calc:
                 else:
                     st.warning(f"**No results found.** We checked all combinations of exponents between {min_exp} and {max_exp} for Level {level}, but none perfectly satisfied the rules. Try widening your exponent range or increasing the Search Level!")
             except Exception as e:
-                st.error(f"**Oops! There is a formatting error in your Base Eta Profile.** Please make sure it looks like `1:-1, 2:2`. Technical details: {e}")
+                st.error(f"Error parsing input. Please check your formatting. Details: {e}")
     else:
         st.info("👈 Enter your parameters in the sidebar and click **Find Multipliers** to begin. Your results will appear here, and past searches will be saved in the History tab!")
 
-# --- Tab 2: History Panel ---
+# --- 4. History Panel ---
 with tab_history:
     st.header("Search History")
     
-    # Create columns to put the "Clear All" button neatly on the right
     hist_col1, hist_col2 = st.columns([3, 1])
     with hist_col1:
         st.markdown(f"*Showing your last {len(st.session_state.history)} searches (Max: 300).*")
@@ -194,8 +200,6 @@ with tab_history:
                 st.latex(record['best_multiplier'])
                 st.markdown(f"*Weight (k): {record['weight']}*")
                 
-                # The new individual delete button! 
-                # We use key=f"del_{idx}" so Streamlit can tell the buttons apart
                 if st.button("🗑️ Delete this entry", key=f"del_{idx}"):
                     st.session_state.history.pop(idx)
                     st.rerun()
