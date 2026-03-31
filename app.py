@@ -15,10 +15,7 @@ def get_divisors(n):
 
 def find_eta_multiplier(target_mod, target_rem, level, base_eta_profile, max_exponent=20):
     divisors = get_divisors(level)
-    
-    # Allow ALL divisors of the level to be used, not just multiples of the target mod
-    allowed_divisors = divisors 
-    
+    allowed_divisors = [d for d in divisors if d % target_mod == 0]
     search_space = [range(max_exponent + 1) for _ in allowed_divisors]
     valid_multipliers = []
 
@@ -71,20 +68,21 @@ with st.sidebar:
     st.subheader("Target Congruence")
     col1, col2 = st.columns(2)
     with col1:
-        target_mod = st.number_input("Modulo (t)", min_value=1, value=43)
+        target_mod = st.number_input("Modulo (t)", min_value=1, value=24)
     with col2:
-        target_rem = st.number_input("Remainder (r)", min_value=0, value=12)
+        target_rem = st.number_input("Remainder (r)", min_value=0, value=16)
         
     st.subheader("Search Parameters")
-    level = st.number_input("Search Level (N)", min_value=1, value=86)
+    level = st.number_input("Search Level (N)", min_value=1, value=48)
     
     st.markdown("**Base Eta Profile**")
     st.markdown("*Format: `arg:power` (e.g., `4:1` for $\eta(4z)^1$)*")
-    profile_input = st.text_input("Profile Input", value="1:-1, 2:-36", label_visibility="collapsed")
+    profile_input = st.text_input("Profile Input", value="4:1, 6:2, 1:-1, 3:-1, 12:-1", label_visibility="collapsed")
     
-    max_exp = st.number_input("Max Exponent", min_value=1, value=15)
+    max_exp = st.number_input("Max Exponent", min_value=1, value=20)
     
     st.markdown("---")
+    # Make the button prominent and span the whole sidebar
     calculate_btn = st.button("🔍 Find Multipliers", use_container_width=True, type="primary")
 
 # --- 3. Main Panel for Results (Right Panel) ---
@@ -106,6 +104,7 @@ if calculate_btn:
                     with st.container():
                         st.subheader(f"Option {i+1}")
                         
+                        # Use columns to separate the stats from the math formula
                         stat_col, math_col = st.columns([1, 2])
                         
                         with stat_col:
@@ -114,6 +113,7 @@ if calculate_btn:
                             
                         with math_col:
                             st.markdown("**Multiplier Function:**")
+                            # Build a beautiful LaTeX string for the output
                             latex_str = ""
                             for divisor, power in best['multiplier_exponents'].items():
                                 if power > 0:
@@ -122,6 +122,7 @@ if calculate_btn:
                                     else:
                                         latex_str += f"\\eta^{{{power}}}({divisor}z)"
                             
+                            # Render it as a massive, clean math equation
                             st.latex(latex_str)
                             
                         st.divider()
@@ -130,4 +131,5 @@ if calculate_btn:
         except Exception as e:
             st.error(f"Error parsing input. Please check your formatting. Details: {e}")
 else:
+    # A friendly placeholder before they click the button
     st.info("👈 Enter your parameters in the sidebar and click **Find Multipliers** to begin.")
