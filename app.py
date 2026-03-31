@@ -16,7 +16,7 @@ def get_divisors(n):
 def find_eta_multiplier(target_mod, target_rem, level, base_eta_profile, max_exponent=20):
     divisors = get_divisors(level)
     
-    # THE FIX: We now allow ALL divisors of the level to be used, not just multiples of the target mod
+    # Allow ALL divisors of the level to be used, not just multiples of the target mod
     allowed_divisors = divisors 
     
     search_space = [range(max_exponent + 1) for _ in allowed_divisors]
@@ -51,3 +51,83 @@ def find_eta_multiplier(target_mod, target_rem, level, base_eta_profile, max_exp
             weight_k = sum(total_profile.values()) / 2
             if weight_k.is_integer() and weight_k > 0:
                 valid_multipliers.append({
+                    'multiplier_exponents': dict(zip(allowed_divisors, exponents)),
+                    'weight_k': int(weight_k),
+                    'shift_b': int(b)
+                })
+
+    valid_multipliers.sort(key=lambda x: x['weight_k'])
+    return valid_multipliers
+
+# --- UI Redesign (The "Desmos" Feel) ---
+
+st.title("✨ Modular Form Eta-Multiplier Finder")
+st.markdown("Find the optimal $\eta$-quotient multiplier to prove partition congruences via Sturm's bound.")
+
+# --- 2. Sidebar for Inputs (Left Panel) ---
+with st.sidebar:
+    st.header("⚙️ Configuration")
+    
+    st.subheader("Target Congruence")
+    col1, col2 = st.columns(2)
+    with col1:
+        target_mod = st.number_input("Modulo (t)", min_value=1, value=43)
+    with col2:
+        target_rem = st.number_input("Remainder (r)", min_value=0, value=12)
+        
+    st.subheader("Search Parameters")
+    level = st.number_input("Search Level (N)", min_value=1, value=86)
+    
+    st.markdown("**Base Eta Profile**")
+    st.markdown("*Format: `arg:power` (e.g., `4:1` for $\eta(4z)^1$)*")
+    profile_input = st.text_input("Profile Input", value="1:-1, 2:-36", label_visibility="collapsed")
+    
+    max_exp = st.number_input("Max Exponent", min_value=1, value=15)
+    
+    st.markdown("---")
+    calculate_btn = st.button("🔍 Find Multipliers", use_container_width=True, type="primary")
+
+# --- 3. Main Panel for Results (Right Panel) ---
+if calculate_btn:
+    with st.spinner("Crunching the numbers... this might take a moment."):
+        try:
+            base_profile = {}
+            for item in profile_input.split(","):
+                arg, power = item.split(":")
+                base_profile[int(arg.strip())] = int(power.strip())
+            
+            results = find_eta_multiplier(target_mod, target_rem, level, base_profile, max_exp)
+            
+            if results:
+                st.success(f"🎉 Found {len(results)} valid multipliers! Showing top options:")
+                st.divider()
+                
+                for i, best in enumerate(results[:10]):
+                    with st.container():
+                        st.subheader(f"Option {i+1}")
+                        
+                        stat_col, math_col = st.columns([1, 2])
+                        
+                        with stat_col:
+                            st.metric("Minimal Weight (k)", best['weight_k'])
+                            st.metric("Shift (b)", best['shift_b'])
+                            
+                        with math_col:
+                            st.markdown("**Multiplier Function:**")
+                            latex_str = ""
+                            for divisor, power in best['multiplier_exponents'].items():
+                                if power > 0:
+                                    if power == 1:
+                                        latex_str += f"\\eta({divisor}z)"
+                                    else:
+                                        latex_str += f"\\eta^{{{power}}}({divisor}z)"
+                            
+                            st.latex(latex_str)
+                            
+                        st.divider()
+            else:
+                st.info("No valid multiplier found. Try increasing the level or max exponent.")
+        except Exception as e:
+            st.error(f"Error parsing input. Please check your formatting. Details: {e}")
+else:
+    st.info("👈 Enter your parameters in the sidebar and click **Find Multipliers** to begin.")
