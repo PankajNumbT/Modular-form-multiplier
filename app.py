@@ -1,20 +1,17 @@
 import streamlit as st
 import math
+import pandas as pd
 from itertools import product
 from fractions import Fraction
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Eta-Multiplier Pro", layout="wide")
 
-# --- Optimized Math Utilities ---
+# --- Math Utilities ---
 def get_divisors(n):
     return [d for d in range(1, n + 1) if n % d == 0]
 
 def constrained_partitions(n, k):
-    """
-    Returns all lists of n non-negative integers that sum to k.
-    This narrows the search space for a fixed weight.
-    """
     if n == 1:
         yield [k]
         return
@@ -23,26 +20,27 @@ def constrained_partitions(n, k):
             yield [i] + p
 
 def get_sturm_bound(k, N):
-    index = N
-    temp_n = N
-    d = 2
-    primes = set()
+    index, temp_n, d, primes = N, N, 2, set()
     while d * d <= temp_n:
         if temp_n % d == 0:
             primes.add(d)
-            while temp_n % d == 0:
-                temp_n //= d
+            while temp_n % d == 0: temp_n //= d
         d += 1
-    if temp_n > 1:
-        primes.add(temp_n)
-    for p in primes:
-        index = index * (1 + 1/p)
+    if temp_n > 1: primes.add(temp_n)
+    for p in primes: index = index * (1 + 1/p)
     return math.ceil((k * index) / 12)
 
 def calculate_cusp_orders(profile, level):
     divs = get_divisors(level)
+    # Returns fractions as strings/objects for display
     return {d: sum((Fraction(math.gcd(d, delta)**2, 24 * delta) * r) 
             for delta, r in profile.items()) for d in divs}
+
+def format_latex_frac(frac):
+    """Converts a Fraction object to a LaTeX string."""
+    if frac.denominator == 1:
+        return f"{frac.numerator}"
+    return f"\\frac{{{frac.numerator}}}{{{frac.denominator}}}"
 
 # --- Narrowed Core Logic ---
 def find_eta_multipliers(target_mod, target_rem, level, base_profile, max_exp, target_k=None):
@@ -50,18 +48,13 @@ def find_eta_multipliers(target_mod, target_rem, level, base_profile, max_exp, t
     allowed_divs = [d for d in divisors if d % target_mod == 0]
     results = []
     
-    # Calculate the sum the exponents MUST hit to reach target_k
-    # 2k = sum(base_powers) + sum(multiplier_exponents)
     base_weight_2k = sum(base_profile.values())
     
     if target_k is not None:
         required_exp_sum = (2 * target_k) - base_weight_2k
-        if required_exp_sum < 0:
-            return [] # Impossible to reach weight with non-negative exponents
-        # Narrow Search: Only check combinations that sum to required_exp_sum
+        if required_exp_sum < 0: return []
         search_iterator = constrained_partitions(len(allowed_divs), required_exp_sum)
     else:
-        # Broad Search: Standard product
         search_iterator = product(range(max_exp + 1), repeat=len(allowed_divs))
 
     for exponents in search_iterator:
@@ -70,20 +63,16 @@ def find_eta_multipliers(target_mod, target_rem, level, base_profile, max_exp, t
         for d, exp in current_multiplier.items():
             total_profile[d] = total_profile.get(d, 0) + exp
         
-        # Calculate Weight
-        k = sum(total_profile.values()) / 2
-        if not k.is_integer() or k <= 0: continue
-        k = int(k)
+        k_val = sum(total_profile.values()) / 2
+        if not k_val.is_integer() or k_val <= 0: continue
+        k = int(k_val)
 
-        # 1. Newman-Ligozat-Wohlfahrt (Mod 24 checks)
         if sum(d * r for d, r in total_profile.items()) % 24 != 0: continue
         if sum((level // d) * r for d, r in total_profile.items()) % 24 != 0: continue
             
-        # 2. Cusp Orders (Holomorphicity)
         cusp_orders = calculate_cusp_orders(total_profile, level)
         if any(order < 0 for order in cusp_orders.values()): continue
             
-        # 3. Shift b Check
         b_num = sum(d * exp for d, exp in current_multiplier.items())
         if b_num % 24 != 0: continue
         b = b_num // 24
@@ -101,10 +90,16 @@ st.title("🛡️ Narrowed Eta-Multiplier Finder")
 
 with st.sidebar:
     st.header("⚙️ Configuration")
-    t = st.number_input("Modulo (t)", value=5)
-    r = st.number_input("Remainder (r)", value=4)
-    N = st.number_input("Level (N)", value=20)
-    profile_str = st.text_input("Base Profile (d:r)", value="1:-1, 5:1")
+    t = st.number_input("Modulo (t)", value=24)
+    r = st.number_input("Remainder (r)", value=16)
+    N = st.number_input("Level (N)", value=48)
+    
+    st.markdown("---")
+    st.subheader("Base Eta Quotient")
+    st.caption("Enter divisors ($d$) and powers ($r$) for $\prod \eta(dz)^r$")
+    # Improved Table Input
+    input_df = pd.DataFrame([{"Divisor (d)": 1, "Power (r)": -1}, {"Divisor (d)": 5, "Power (r)": 1}])
+    edited_df = st.data_editor(input_df, num_rows="dynamic", use_container_width=True)
     
     st.divider()
     k_mode = st.radio("Search Optimization", ["Auto (Minimal k)", "Strict (Target k)"])
@@ -113,22 +108,36 @@ with st.sidebar:
 
     if st.button("🔍 Run Optimized Analysis", type="primary", use_container_width=True):
         try:
-            base = {int(x.split(":")[0]): int(x.split(":")[1]) for x in profile_str.split(",")}
+            # Convert dataframe to dict
+            base = dict(zip(edited_df["Divisor (d)"].astype(int), edited_df["Power (r)"].astype(int)))
             res = find_eta_multipliers(t, r, N, base, max_e, target_k)
-            if res:
-                st.session_state.current_results = res
-            else:
-                st.session_state.current_results = "NOT_FOUND"
+            st.session_state.current_results = res if res else "NOT_FOUND"
         except Exception as e:
-            st.error(f"Error: {e}")
+            st.error(f"Input Error: Please ensure divisors and powers are integers.")
 
 # --- Display Results ---
 if "current_results" in st.session_state:
     if st.session_state.current_results == "NOT_FOUND":
-        st.error(f"❌ No valid multipliers exist for the given parameters (k={target_k if target_k else 'any'}).")
+        st.error(f"❌ No valid multipliers exist for these parameters.")
     else:
         st.success(f"Found {len(st.session_state.current_results)} candidates.")
-        for idx, item in enumerate(st.session_state.current_results[:5]):
-            with st.expander(f"Option {idx+1}: k={item['k']}, Sturm={item['sturm']}"):
-                st.latex(f"M(z) = " + "".join([f"\\eta^{{{v}}}({k}z)" for k,v in item['multiplier'].items() if v > 0]))
-                st.json(item['cusp_orders'])
+        for idx, item in enumerate(st.session_state.current_results[:10]):
+            with st.expander(f"Candidate {idx+1} | k = {item['k']} | Sturm = {item['sturm']}", expanded=(idx==0)):
+                
+                col1, col2 = st.columns([1, 1])
+                
+                with col1:
+                    st.markdown("**Multiplier Function**")
+                    mult_lat = "".join([f"\\eta^{{{v}}}({k}z)" if v > 1 else f"\\eta({k}z)" 
+                                      for k, v in item['multiplier'].items() if v > 0])
+                    st.latex(f"M(z) = {mult_lat}")
+                    st.metric("Shift (b)", item['b'])
+                
+                with col2:
+                    st.markdown("**Orders at Cusps**")
+                    # Create a nice looking table for cusp orders
+                    cusp_data = []
+                    for c, val in item['cusp_orders'].items():
+                        cusp_data.append({"Cusp": f"1/{c}", "Order": f"${format_latex_frac(val)}$"})
+                    
+                    st.table(pd.DataFrame(cusp_data))
