@@ -12,6 +12,7 @@ def get_divisors(n):
     return [d for d in range(1, n + 1) if n % d == 0]
 
 def constrained_partitions(n, k):
+    """Generates combinations of exponents that sum exactly to a target."""
     if n == 1:
         yield [k]
         return
@@ -20,6 +21,7 @@ def constrained_partitions(n, k):
             yield [i] + p
 
 def get_sturm_bound(k, N):
+    """Calculates the Sturm Bound for Gamma0(N)."""
     index, temp_n, d, primes = N, N, 2, set()
     while d * d <= temp_n:
         if temp_n % d == 0:
@@ -31,14 +33,16 @@ def get_sturm_bound(k, N):
     return math.ceil((k * index) / 12)
 
 def calculate_cusp_orders(profile, level):
+    """Calculates the exact vanishing order at each cusp."""
     divs = get_divisors(level)
     return {d: sum((Fraction(math.gcd(d, delta)**2, 24 * delta) * r) 
             for delta, r in profile.items()) for d in divs}
 
 def format_latex_frac(frac):
+    """Converts a Fraction to a large LaTeX display fraction."""
     if frac.denominator == 1:
         return f"{frac.numerator}"
-    return f"\\frac{{{frac.numerator}}}{{{frac.denominator}}}"
+    return f"\\dfrac{{{frac.numerator}}}{{{frac.denominator}}}"
 
 # --- Narrowed Core Logic ---
 def find_eta_multipliers(target_mod, target_rem, level, base_profile, max_exp, target_k=None):
@@ -48,6 +52,7 @@ def find_eta_multipliers(target_mod, target_rem, level, base_profile, max_exp, t
     
     base_weight_2k = sum(base_profile.values())
     
+    # Choose Search Strategy
     if target_k is not None:
         required_exp_sum = (2 * target_k) - base_weight_2k
         if required_exp_sum < 0: return []
@@ -61,16 +66,20 @@ def find_eta_multipliers(target_mod, target_rem, level, base_profile, max_exp, t
         for d, exp in current_multiplier.items():
             total_profile[d] = total_profile.get(d, 0) + exp
         
+        # 1. Check Weight
         k_val = sum(total_profile.values()) / 2
         if not k_val.is_integer() or k_val <= 0: continue
         k = int(k_val)
 
+        # 2. Check Mod 24 Conditions
         if sum(d * r for d, r in total_profile.items()) % 24 != 0: continue
         if sum((level // d) * r for d, r in total_profile.items()) % 24 != 0: continue
             
+        # 3. Check Holomorphicity at Cusps
         cusp_orders = calculate_cusp_orders(total_profile, level)
         if any(order < 0 for order in cusp_orders.values()): continue
             
+        # 4. Check Shift (b)
         b_num = sum(d * exp for d, exp in current_multiplier.items())
         if b_num % 24 != 0: continue
         b = b_num // 24
@@ -94,15 +103,16 @@ with st.sidebar:
     
     st.divider()
     st.subheader("Base Eta Quotient")
-    st.caption("Add rows for each $\eta(dz)^r$. Empty or incomplete rows are ignored.")
+    st.caption("Click to edit. Add empty rows to create new terms.")
     
+    # Initialize default table data
     if 'input_data' not in st.session_state:
         st.session_state.input_data = pd.DataFrame([
             {"Divisor (d)": 1, "Power (r)": -1},
             {"Divisor (d)": 5, "Power (r)": 1}
         ])
 
-    # Table Input
+    # Interactive Data Editor
     edited_df = st.data_editor(
         st.session_state.input_data, 
         num_rows="dynamic", 
@@ -121,16 +131,12 @@ with st.sidebar:
 
     if st.button("🔍 Run Optimized Analysis", type="primary", use_container_width=True):
         try:
-            # --- THE "BULLETPROOF" CLEANING LOGIC ---
-            # 1. Convert any accidental empty strings to proper pandas NaNs
-            clean_df = edited_df.replace('', pd.NA)
-            # 2. Drop any row that is missing either a divisor or a power
-            clean_df = clean_df.dropna(subset=["Divisor (d)", "Power (r)"])
-            # 3. Ensure we only keep rows where the divisor is a positive integer
+            # --- BULLETPROOF CLEANING ---
+            clean_df = edited_df.replace('', pd.NA).dropna(subset=["Divisor (d)", "Power (r)"])
             clean_df = clean_df[clean_df["Divisor (d)"] > 0]
             
             if clean_df.empty:
-                st.error("Please provide at least one valid Divisor and Power to run the calculation.")
+                st.error("Please provide at least one valid Divisor and Power.")
             else:
                 base = dict(zip(clean_df["Divisor (d)"].astype(int), clean_df["Power (r)"].astype(int)))
                 res = find_eta_multipliers(t, r, N, base, max_e, target_k)
@@ -141,9 +147,10 @@ with st.sidebar:
 # --- Display Results ---
 if "current_results" in st.session_state:
     if st.session_state.current_results == "NOT_FOUND":
-        st.error(f"❌ No valid multipliers exist for these parameters.")
+        st.error("❌ No valid multipliers exist for these parameters.")
     else:
         st.success(f"Found {len(st.session_state.current_results)} candidates.")
+        
         for idx, item in enumerate(st.session_state.current_results[:10]):
             with st.expander(f"Candidate {idx+1} | k = {item['k']} | Sturm = {item['sturm']}", expanded=(idx==0)):
                 
@@ -158,8 +165,10 @@ if "current_results" in st.session_state:
                 
                 with col2:
                     st.markdown("**Orders at Cusps ($ord(f, c)$)**")
-                    cusp_data = []
-                    for c, val in item['cusp_orders'].items():
-                        cusp_data.append({"Cusp (1/d)": f"1/{c}", "Vanishing Order": f"${format_latex_frac(val)}$"})
                     
-                    st.dataframe(pd.DataFrame(cusp_data), hide_index=True, use_container_width=True)
+                    # Markdown Table for perfect LaTeX Fraction rendering
+                    md_table = "| Cusp ($1/d$) | Vanishing Order |\n| :---: | :---: |\n"
+                    for c, val in item['cusp_orders'].items():
+                        md_table += f"| $1/{c}$ | ${format_latex_frac(val)}$ |\n"
+                    
+                    st.markdown(md_table)
