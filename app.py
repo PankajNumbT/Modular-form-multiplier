@@ -32,12 +32,10 @@ def get_sturm_bound(k, N):
 
 def calculate_cusp_orders(profile, level):
     divs = get_divisors(level)
-    # Returns fractions as strings/objects for display
     return {d: sum((Fraction(math.gcd(d, delta)**2, 24 * delta) * r) 
             for delta, r in profile.items()) for d in divs}
 
 def format_latex_frac(frac):
-    """Converts a Fraction object to a LaTeX string."""
     if frac.denominator == 1:
         return f"{frac.numerator}"
     return f"\\frac{{{frac.numerator}}}{{{frac.denominator}}}"
@@ -94,12 +92,27 @@ with st.sidebar:
     r = st.number_input("Remainder (r)", value=16)
     N = st.number_input("Level (N)", value=48)
     
-    st.markdown("---")
+    st.divider()
     st.subheader("Base Eta Quotient")
-    st.caption("Enter divisors ($d$) and powers ($r$) for $\prod \eta(dz)^r$")
-    # Improved Table Input
-    input_df = pd.DataFrame([{"Divisor (d)": 1, "Power (r)": -1}, {"Divisor (d)": 5, "Power (r)": 1}])
-    edited_df = st.data_editor(input_df, num_rows="dynamic", use_container_width=True)
+    st.caption("Add rows for each $\eta(dz)^r$. Empty or incomplete rows are ignored.")
+    
+    if 'input_data' not in st.session_state:
+        st.session_state.input_data = pd.DataFrame([
+            {"Divisor (d)": 1, "Power (r)": -1},
+            {"Divisor (d)": 5, "Power (r)": 1}
+        ])
+
+    # Table Input
+    edited_df = st.data_editor(
+        st.session_state.input_data, 
+        num_rows="dynamic", 
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Divisor (d)": st.column_config.NumberColumn(format="%d", min_value=1),
+            "Power (r)": st.column_config.NumberColumn(format="%d")
+        }
+    )
     
     st.divider()
     k_mode = st.radio("Search Optimization", ["Auto (Minimal k)", "Strict (Target k)"])
@@ -108,12 +121,22 @@ with st.sidebar:
 
     if st.button("🔍 Run Optimized Analysis", type="primary", use_container_width=True):
         try:
-            # Convert dataframe to dict
-            base = dict(zip(edited_df["Divisor (d)"].astype(int), edited_df["Power (r)"].astype(int)))
-            res = find_eta_multipliers(t, r, N, base, max_e, target_k)
-            st.session_state.current_results = res if res else "NOT_FOUND"
+            # --- THE "BULLETPROOF" CLEANING LOGIC ---
+            # 1. Convert any accidental empty strings to proper pandas NaNs
+            clean_df = edited_df.replace('', pd.NA)
+            # 2. Drop any row that is missing either a divisor or a power
+            clean_df = clean_df.dropna(subset=["Divisor (d)", "Power (r)"])
+            # 3. Ensure we only keep rows where the divisor is a positive integer
+            clean_df = clean_df[clean_df["Divisor (d)"] > 0]
+            
+            if clean_df.empty:
+                st.error("Please provide at least one valid Divisor and Power to run the calculation.")
+            else:
+                base = dict(zip(clean_df["Divisor (d)"].astype(int), clean_df["Power (r)"].astype(int)))
+                res = find_eta_multipliers(t, r, N, base, max_e, target_k)
+                st.session_state.current_results = res if res else "NOT_FOUND"
         except Exception as e:
-            st.error(f"Input Error: Please ensure divisors and powers are integers.")
+            st.error(f"Analysis failed. Please check your inputs. Details: {e}")
 
 # --- Display Results ---
 if "current_results" in st.session_state:
@@ -124,7 +147,7 @@ if "current_results" in st.session_state:
         for idx, item in enumerate(st.session_state.current_results[:10]):
             with st.expander(f"Candidate {idx+1} | k = {item['k']} | Sturm = {item['sturm']}", expanded=(idx==0)):
                 
-                col1, col2 = st.columns([1, 1])
+                col1, col2 = st.columns([1, 1.2])
                 
                 with col1:
                     st.markdown("**Multiplier Function**")
@@ -134,10 +157,9 @@ if "current_results" in st.session_state:
                     st.metric("Shift (b)", item['b'])
                 
                 with col2:
-                    st.markdown("**Orders at Cusps**")
-                    # Create a nice looking table for cusp orders
+                    st.markdown("**Orders at Cusps ($ord(f, c)$)**")
                     cusp_data = []
                     for c, val in item['cusp_orders'].items():
-                        cusp_data.append({"Cusp": f"1/{c}", "Order": f"${format_latex_frac(val)}$"})
+                        cusp_data.append({"Cusp (1/d)": f"1/{c}", "Vanishing Order": f"${format_latex_frac(val)}$"})
                     
-                    st.table(pd.DataFrame(cusp_data))
+                    st.dataframe(pd.DataFrame(cusp_data), hide_index=True, use_container_width=True)
