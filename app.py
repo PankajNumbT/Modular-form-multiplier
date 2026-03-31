@@ -15,7 +15,7 @@ def get_divisors(n):
 
 def find_eta_multiplier(target_mod, target_rem, level, base_eta_profile, max_exponent=20):
     divisors = get_divisors(level)
-    allowed_divisors = [d for d in divisors if d % target_mod == 0]
+  allowed_divisors = divisors
     search_space = [range(max_exponent + 1) for _ in allowed_divisors]
     valid_multipliers = []
 
