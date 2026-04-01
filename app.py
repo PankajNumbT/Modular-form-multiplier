@@ -87,7 +87,7 @@ def generate_latex_export(t, r, N, base_profile, item):
 
 # --- OPTIMIZED CORE LOGIC ---
 @st.cache_data(show_spinner=False)
-def find_eta_multipliers(target_mod, target_rem, level, base_profile_tuple, min_exp, max_exp, search_mode="Standard", target_k=None, targeted_divs_tuple=None, limit_n=None, limit_sturm=None):
+def find_eta_multipliers(target_mod, target_rem, level, base_profile_tuple, min_exp, max_exp, search_mode="Standard", target_k=None, targeted_divs_tuple=None, limit_n=None, limit_sturm=None, prevent_cancel=False):
     # Convert tuples back to dictionary/list inside the function so Streamlit's cache doesn't crash
     base_profile = dict(base_profile_tuple)
     targeted_divs = list(targeted_divs_tuple) if targeted_divs_tuple else None
@@ -124,6 +124,12 @@ def find_eta_multipliers(target_mod, target_rem, level, base_profile_tuple, min_
         for d, exp in current_multiplier.items():
             if exp != 0:
                 total_profile[d] = total_profile.get(d, 0) + exp
+                
+        # --- CANCELLATION PREVENTION LOGIC ---
+        if prevent_cancel:
+            # If any divisor from the base perfectly equals 0 in the total, skip it
+            if any(total_profile.get(d, 0) == 0 for d in base_profile.keys()):
+                continue
         
         # 1. Check Weight
         k_val = sum(total_profile.values()) / 2
@@ -231,20 +237,25 @@ with st.sidebar:
         with col2:
             max_e = st.number_input("Max Exponent", value=1000)
 
-    # --- NEW: EARLY STOPPING UI ---
+    # --- ADVANCED FILTERS & LIMITS ---
     st.divider()
-    st.subheader("Stopping Criteria")
-    stop_mode = st.radio("Search Limit", ["Find All Valid Multipliers", "Stop After Finding N Results"])
+    st.subheader("Advanced Filters & Limits")
+    
+    # Toggle to prevent cancellation
+    prevent_cancel = st.checkbox("Strict Preservation (Forbid Cancellation)", value=False, help="Ensures the multiplier does not completely cancel out any term from the base quotient.")
+    
+    # Toggle for Early Stopping
+    use_early_stop = st.checkbox("Enable Early Stopping (Speed Optimization)", value=False, help="Stop the search automatically once enough valid multipliers are found.")
     
     limit_n = None
     limit_sturm = None
     
-    if stop_mode == "Stop After Finding N Results":
+    if use_early_stop:
         col3, col4 = st.columns(2)
         with col3:
-            limit_n = st.number_input("Stop after finding N:", value=10, min_value=1)
+            limit_n = st.number_input("Stop after finding N results:", value=10, min_value=1)
         with col4:
-            limit_sturm = st.number_input("Max Sturm Bound:", value=250, min_value=1)
+            limit_sturm = st.number_input("Max Sturm Bound Limit:", value=250, min_value=1)
 
     if st.button("🔍 Run Analysis", type="primary", use_container_width=True):
         try:
@@ -264,7 +275,7 @@ with st.sidebar:
                         tuple(base.items()), 
                         min_e, max_e, search_mode, target_k, 
                         tuple(targeted_divs),
-                        limit_n, limit_sturm
+                        limit_n, limit_sturm, prevent_cancel
                     )
                 
                 st.session_state.current_results = res if res else "NOT_FOUND"
@@ -276,6 +287,18 @@ with st.sidebar:
 
         except Exception as e:
             st.error(f"Analysis failed. Details: {e}")
+
+    # --- DEVELOPER CREDIT FOOTER ---
+    st.divider()
+    st.markdown(
+        """
+        <div style='text-align: center; color: gray; font-size: 0.85em;'>
+            Developed by <b>[Pankaj Gogoi]</b><br>
+            <i>[Tezpur University, gopankajgo07@gmail.com]</i>
+        </div>
+        """, 
+        unsafe_allow_html=True
+    )
 
 # --- Display Results ---
 if "current_results" in st.session_state:
