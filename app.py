@@ -12,6 +12,7 @@ def get_divisors(n):
     return [d for d in range(1, n + 1) if n % d == 0]
 
 def constrained_partitions(n, k):
+    """Generates non-negative combinations for strict target k searches."""
     if n == 1:
         yield [k]
         return
@@ -20,6 +21,7 @@ def constrained_partitions(n, k):
             yield [i] + p
 
 def get_sturm_bound(k, N):
+    """Calculates the Sturm Bound for Gamma0(N)."""
     index, temp_n, d, primes = N, N, 2, set()
     while d * d <= temp_n:
         if temp_n % d == 0:
@@ -31,12 +33,14 @@ def get_sturm_bound(k, N):
     return math.ceil((k * index) / 12)
 
 def format_latex_frac(frac):
+    """Converts a Fraction to a large LaTeX display fraction."""
     if frac.denominator == 1:
         return f"{frac.numerator}"
     return f"\\dfrac{{{frac.numerator}}}{{{frac.denominator}}}"
 
-# --- LaTeX Generator ---
+# --- CRASH-PROOF LaTeX Generator ---
 def generate_latex_export(t, r, N, base_profile, item):
+    """Generates a formatted LaTeX string using lists to prevent f-string copy errors."""
     base_parts = []
     for d, p in base_profile.items():
         if p == 1: base_parts.append(f"\\eta({d}z)")
@@ -46,43 +50,51 @@ def generate_latex_export(t, r, N, base_profile, item):
     mult_parts = []
     for d, p in item['multiplier'].items():
         if p == 1: mult_parts.append(f"\\eta({d}z)")
-        elif p > 1: mult_parts.append(f"\\eta^{{{p}}}({d}z)")
+        elif p != 0: mult_parts.append(f"\\eta^{{{p}}}({d}z)")
     mult_lat = "".join(mult_parts) if mult_parts else "1"
 
-    latex_code = f"""% --- Auto-Generated Modular Form Data ---
-\\begin{{align*}}
-    \\text{{Level }} (N) &= {N} \\\\
-    \\text{{Target}} &\\equiv {r} \\pmod{{{t}}} \\\\
-    \\text{{Base Quotient}} &= {base_lat} \\\\
-    \\text{{Multiplier }} M(z) &= {mult_lat} \\\\
-    \\text{{Total Weight }} (k) &= {item['k']} \\\\
-    \\text{{Total Shift }} (b) &= {item['total_b']} \\\\
-    \\text{{Sturm Bound }} (S) &= {item['sturm']}
-\\end{{align*}}
+    lines = [
+        "% --- Auto-Generated Modular Form Data ---",
+        "\\begin{align*}",
+        f"    \\text{{Level }} (N) &= {N} \\\\",
+        f"    \\text{{Target}} &\\equiv {r} \\pmod{{{t}}} \\\\",
+        f"    \\text{{Base Quotient}} &= {base_lat} \\\\",
+        f"    \\text{{Multiplier }} M(z) &= {mult_lat} \\\\",
+        f"    \\text{{Total Weight }} (k) &= {item['k']} \\\\",
+        f"    \\text{{Total Shift }} (b) &= {item['total_b']} \\\\",
+        f"    \\text{{Sturm Bound }} (S) &= {item['sturm']}",
+        "\\end{align*}",
+        "",
+        "\\begin{table}[htbp]",
+        "    \\centering",
+        "    \\renewcommand{\\arraystretch}{1.5}",
+        "    \\begin{tabular}{|c|c|}",
+        "    \\hline",
+        "    \\textbf{Cusp ($\\frac{1}{d}$)} & \\textbf{Order ($ord(f, c)$)} \\\\ \\hline"
+    ]
 
-\\begin{{table}}[htbp]
-    \\centering
-    \\renewcommand{{\\arraystretch}}{{1.5}}
-    \\begin{{tabular}}{{|c|c|}}
-    \\hline
-    \\textbf{{Cusp ($\\frac{{1}}{{d}}$)}} & \\textbf{{Order ($ord(f, c)$)}} \\\\ \\hline
-"""
     for c, val in item['cusp_orders'].items():
         frac_str = f"\\frac{{{val.numerator}}}{{{val.denominator}}}" if val.denominator != 1 else f"{val.numerator}"
-        latex_code += f"    $\\frac{{1}}{{{c}}}$ & ${frac_str}$ \\\\ \\hline\n"
+        lines.append(f"    $\\frac{{1}}{{{c}}}$ & ${frac_str}$ \\\\ \\hline")
 
-    latex_code += f"""    \\end{{tabular}}
-    \\caption{{Orders of vanishing at the cusps of $\\Gamma_0({N})$}}
-\\end{{table}}
-"""
-    return latex_code
+    lines.extend([
+        "    \\end{tabular}",
+        f"    \\caption{{Orders of vanishing at the cusps of $\\Gamma_0({N})$}}",
+        "\\end{table}"
+    ])
+
+    return "\n".join(lines)
 
 # --- OPTIMIZED CORE LOGIC ---
-# Added st.cache_data so repeated runs are instant
 @st.cache_data(show_spinner=False)
-def find_eta_multipliers(target_mod, target_rem, level, base_profile, max_exp, search_mode="Standard", target_k=None, targeted_divs=None):
+def find_eta_multipliers(target_mod, target_rem, level, base_profile_tuple, min_exp, max_exp, search_mode="Standard", target_k=None, targeted_divs_tuple=None, limit_n=None, limit_sturm=None):
+    # Convert tuples back to dictionary/list inside the function so Streamlit's cache doesn't crash
+    base_profile = dict(base_profile_tuple)
+    targeted_divs = list(targeted_divs_tuple) if targeted_divs_tuple else None
+    
     divisors = get_divisors(level)
     
+    # Apply targeted divisors if in Deep Search mode
     if search_mode == "Deep Search (Targeted)":
         allowed_divs = tuple(targeted_divs) if targeted_divs else tuple(divisors)
     else:
@@ -91,16 +103,18 @@ def find_eta_multipliers(target_mod, target_rem, level, base_profile, max_exp, s
     results = []
     base_weight_2k = sum(base_profile.values())
     
-    # ⚡ SPEED BOOST: Pre-compute the Cusp Matrix outside the loop
+    # Pre-compute the Cusp Matrix outside the loop for speed
     all_deltas = set(base_profile.keys()).union(set(allowed_divs))
     cusp_matrix = {d: {delta: Fraction(math.gcd(d, delta)**2, 24 * delta) for delta in all_deltas} for d in divisors}
     
+    # SEARCH SPACE: Support for asymmetric manual bounds
     if search_mode == "Standard (All Divisors)" and target_k is not None:
         required_exp_sum = (2 * target_k) - base_weight_2k
         if required_exp_sum < 0: return []
         search_iterator = constrained_partitions(len(allowed_divs), required_exp_sum)
     else:
-        search_iterator = product(range(max_exp + 1), repeat=len(allowed_divs))
+        # Searches from min_exp to max_exp exactly as requested
+        search_iterator = product(range(min_exp, max_exp + 1), repeat=len(allowed_divs))
 
     for exponents in search_iterator:
         current_multiplier = dict(zip(allowed_divs, exponents))
@@ -108,7 +122,7 @@ def find_eta_multipliers(target_mod, target_rem, level, base_profile, max_exp, s
         # Fast profile merge
         total_profile = base_profile.copy()
         for d, exp in current_multiplier.items():
-            if exp > 0:
+            if exp != 0:
                 total_profile[d] = total_profile.get(d, 0) + exp
         
         # 1. Check Weight
@@ -123,15 +137,14 @@ def find_eta_multipliers(target_mod, target_rem, level, base_profile, max_exp, s
         sum_Ndr = sum((level // d) * r for d, r in total_profile.items())
         if sum_Ndr % 24 != 0: continue
             
-        # 3. ⚡ FAST Cusp Holomorphicity Check
+        # 3. FAST Cusp Holomorphicity Check
         is_holomorphic = True
         cusp_orders = {}
         for d in divisors:
-            # Look up pre-computed fractions instead of recalculating
             order = sum(cusp_matrix[d][delta] * r for delta, r in total_profile.items())
             if order < 0:
                 is_holomorphic = False
-                break # Exit instantly if any cusp goes negative
+                break
             cusp_orders[d] = order
             
         if not is_holomorphic: continue
@@ -139,10 +152,22 @@ def find_eta_multipliers(target_mod, target_rem, level, base_profile, max_exp, s
         # 4. Check Shift Congruence Alignment
         total_b = total_b_num // 24
         if (total_b + target_rem) % target_mod == 0:
+            
+            # --- EARLY STOPPING LOGIC ---
+            sturm = get_sturm_bound(k, level)
+            
+            # If a max sturm bound is set and this exceeds it, skip it entirely
+            if limit_sturm is not None and sturm > limit_sturm:
+                continue
+            
             results.append({
                 'multiplier': current_multiplier, 'k': k, 'total_b': total_b,
-                'cusp_orders': cusp_orders, 'sturm': get_sturm_bound(k, level)
+                'cusp_orders': cusp_orders, 'sturm': sturm
             })
+            
+            # If we hit the requested number of results, abort the loop and return instantly
+            if limit_n is not None and len(results) >= limit_n:
+                break
             
     return sorted(results, key=lambda x: x['k'])
 
@@ -157,6 +182,7 @@ with st.sidebar:
     
     st.divider()
     st.subheader("Base Eta Quotient")
+    st.caption("Defaults set to $1/(f_1 f_2^{36})$")
     
     if 'input_data' not in st.session_state:
         st.session_state.input_data = pd.DataFrame([
@@ -183,32 +209,71 @@ with st.sidebar:
     targeted_divs = []
     
     if search_mode == "Standard (All Divisors)":
-        k_mode = st.radio("Optimization", ["Auto (Minimal k)", "Strict (Target k)"])
-        if k_mode == "Strict (Target k)":
+        k_mode = st.radio("Optimization", ["Auto (Minimal k, allows negatives)", "Strict (Target k, positive only)"])
+        if k_mode == "Strict (Target k, positive only)":
             target_k = st.number_input("Target k", value=12)
-        max_e = st.number_input("Max Exponent", value=10)
+            min_e = 0
+            max_e = st.number_input("Max Exponent Bound", value=10)
+        else:
+            col1, col2 = st.columns(2)
+            with col1:
+                min_e = st.number_input("Min Exponent", value=-2)
+            with col2:
+                max_e = st.number_input("Max Exponent", value=10)
     else:
         st.caption("Isolate specific divisors to search massive exponents instantly.")
         all_divs = get_divisors(N)
         targeted_divs = st.multiselect("Select Divisors for Multiplier", all_divs, default=[1])
-        max_e = st.number_input("Max Exponent Limit", value=1000)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            min_e = st.number_input("Min Exponent", value=0)
+        with col2:
+            max_e = st.number_input("Max Exponent", value=1000)
+
+    # --- NEW: EARLY STOPPING UI ---
+    st.divider()
+    st.subheader("Stopping Criteria")
+    stop_mode = st.radio("Search Limit", ["Find All Valid Multipliers", "Stop After Finding N Results"])
+    
+    limit_n = None
+    limit_sturm = None
+    
+    if stop_mode == "Stop After Finding N Results":
+        col3, col4 = st.columns(2)
+        with col3:
+            limit_n = st.number_input("Stop after finding N:", value=10, min_value=1)
+        with col4:
+            limit_sturm = st.number_input("Max Sturm Bound:", value=250, min_value=1)
 
     if st.button("🔍 Run Analysis", type="primary", use_container_width=True):
         try:
             clean_df = edited_df.replace('', pd.NA).dropna(subset=["Divisor (d)", "Power (r)"])
             clean_df = clean_df[clean_df["Divisor (d)"] > 0]
             
-            if clean_df.empty:
+            if min_e > max_e:
+                st.error("Min Exponent cannot be strictly greater than Max Exponent.")
+            elif clean_df.empty:
                 st.error("Please provide at least one valid Divisor and Power.")
             else:
                 base = dict(zip(clean_df["Divisor (d)"].astype(int), clean_df["Power (r)"].astype(int)))
                 
-                # Visual Spinner added here
                 with st.spinner("Crunching the numbers... Please wait."):
-                    res = find_eta_multipliers(t, r, N, base, max_e, search_mode, target_k, targeted_divs)
+                    res = find_eta_multipliers(
+                        t, r, N, 
+                        tuple(base.items()), 
+                        min_e, max_e, search_mode, target_k, 
+                        tuple(targeted_divs),
+                        limit_n, limit_sturm
+                    )
                 
                 st.session_state.current_results = res if res else "NOT_FOUND"
                 st.session_state.current_params = {'t': t, 'r': r, 'N': N, 'base': base}
+                
+                # Show a warning message if we hit the early stop limit
+                if limit_n is not None and len(res) >= limit_n:
+                    st.toast(f"✅ Search stopped early after finding {limit_n} valid results!")
+
         except Exception as e:
             st.error(f"Analysis failed. Details: {e}")
 
@@ -221,7 +286,8 @@ if "current_results" in st.session_state:
         
         p = st.session_state.current_params
         
-        for idx, item in enumerate(st.session_state.current_results[:10]):
+        # We display all results found (up to the limit_n if early stop was used)
+        for idx, item in enumerate(st.session_state.current_results):
             with st.expander(f"Candidate {idx+1} | Total Weight k = {item['k']} | Sturm = {item['sturm']}", expanded=(idx==0)):
                 
                 tab1, tab2 = st.tabs(["📊 Visual Dashboard", "📝 Copy LaTeX Export"])
@@ -230,8 +296,9 @@ if "current_results" in st.session_state:
                     col1, col2 = st.columns([1, 1.2])
                     with col1:
                         st.markdown("**Found Multiplier**")
-                        mult_lat = "".join([f"\\eta^{{{v}}}({k}z)" if v > 1 else f"\\eta({k}z)" 
-                                          for k, v in item['multiplier'].items() if v > 0])
+                        mult_lat = "".join([f"\\eta^{{{v}}}({k}z)" if v not in [0, 1] else (f"\\eta({k}z)" if v == 1 else "") 
+                                          for k, v in item['multiplier'].items() if v != 0])
+                        if not mult_lat: mult_lat = "1"
                         st.latex(f"M(z) = {mult_lat}")
                         st.metric("Total Shift (b)", item['total_b'])
                     
