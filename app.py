@@ -293,8 +293,9 @@ with st.sidebar:
     st.markdown(
         """
         <div style='text-align: center; color: gray; font-size: 0.85em;'>
-            Developed by <b>[Pankaj Gogoi]</b><br>
-            <i>[Tezpur University, gopankajgo07@gmail.com]</i>
+            Developed by <b>Pankaj Gogoi</b><br>
+            <i>Tezpur University</i><br>
+            ✉️ gopankajgo07@gmail.com
         </div>
         """, 
         unsafe_allow_html=True
