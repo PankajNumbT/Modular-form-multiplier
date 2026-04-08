@@ -971,6 +971,45 @@ def run_strategy_suggestor():
 # ==========================================
 
 st.set_page_config(page_title="Ramanujan Laboratory", page_icon="♾️", layout="wide")
+# ==========================================
+# --- MASTER NAVIGATION CONTROLLER ---
+# ==========================================
+
+st.set_page_config(page_title="Ramanujan Laboratory", page_icon="♾️", layout="wide")
+
+# --- ADDED: Top-Right Developer Branding ---
+st.markdown(
+    """
+    <style>
+    .dev-branding {
+        position: absolute;
+        top: -60px;
+        right: 0px;
+        text-align: right;
+        font-family: 'monospace';
+        color: #555555;
+        line-height: 1.2;
+    }
+    @media (max-width: 600px) {
+        .dev-branding {
+            position: relative;
+            top: 0;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+    }
+    </style>
+    <div class="dev-branding">
+        <b>Developed by Pankaj Gogoi</b><br>
+        Tezpur University
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+# --- END BRANDING ---
+
+st.sidebar.title("🧭 Main Menu")
+# ... (rest of your code continues)
 st.sidebar.title("🧭 Main Menu")
 app_mode = st.sidebar.selectbox("Select Application Module:", ["⛏️ Congruence Miner", "🌀 Euler Product Explorer", "🛡️ Eta-Multiplier Pro", "📚 Dissection Dictionary", "🧠 Dissection Strategist"])
 st.sidebar.divider()
