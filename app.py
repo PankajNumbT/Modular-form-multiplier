@@ -3,6 +3,10 @@ import pandas as pd
 import time
 import re
 import math
+import os
+import pickle
+import hashlib
+import shutil
 from fractions import Fraction
 from itertools import product
 from functools import reduce
@@ -28,7 +32,8 @@ with header_right:
         """
         <div style="text-align: right; color: gray; font-size: 15px; margin-top: -20px;">
             <b>Developed by Pankaj Gogoi</b><br>
-            <i>Tezpur University</i>
+            <i>Tezpur University</i><br>
+            <span style="font-size: 11px;">gopankajgo07@gmail.com</span>
         </div>
         """,
         unsafe_allow_html=True
@@ -104,7 +109,6 @@ class QSeries:
         if isinstance(other, QSeries): return self * other.inv()
         elif isinstance(other, (int, float)): return QSeries([c // int(other) for c in self.coeffs], self.limit)
 
-@st.cache_data(show_spinner=False)
 def generate_base_pochhammer(m, limit):
     A = [0] * (limit + 1); A[0] = 1; k = 1
     while True:
@@ -216,14 +220,12 @@ def latex_to_python(latex_str):
     
     s = re.sub(r'\)([a-zA-Z])', r')*\1', s)        
     s = re.sub(r'(\d)([a-zA-Z])', r'\1*\2', s)    
-    s = re.sub(r'([qX])([fXq])', r'\1*\2', s)       
+    s = re.sub(r'([qX])([fXq])', r'\1*\2', s)        
     s = re.sub(r'([f])([qX])', r'\1*\2', s)        
     s = re.sub(r'\)\(', r')*(', s)                
     s = re.sub(r'([qX])\(', r'\1*(', s)            
-    s = re.sub(r'\)(\d)', r')*\1', s)              
+    s = re.sub(r'\)(\d)', r')*\1', s)               
     s = re.sub(r'(f\([^)]+\))(f\()', r'\1*\2', s)
-    
-    # --- FIX: Handle Digits followed by a parenthesis (e.g. 2((...) -> 2*((...)) ---
     s = re.sub(r'(\d)\(', r'\1*(', s)
     
     return s
@@ -236,6 +238,79 @@ def is_prime(n):
     for i in range(2, int(n**0.5) + 1):
         if n % i == 0: return False
     return True
+
+
+# ==========================================
+# --- SMART CACHING ARCHITECTURE ---
+# ==========================================
+if "smart_ram_cache" not in st.session_state:
+    st.session_state.smart_ram_cache = {}
+
+def _core_expansion_engine(latex_str, limit):
+    """Core mathematical evaluation logic."""
+    def f(n): 
+        if int(n) <= 0: return QSeries([1] + [0]*limit, limit)
+        return QSeries(generate_base_pochhammer(int(n), limit), limit)
+    
+    q_obj = QSeries([0, 1] + [0]*limit, limit)
+    python_formula = latex_to_python(latex_str)
+    
+    safe_env = {
+        "f": f, "q": q_obj, "X": 1, 
+        "phi": lambda k: gen_phi(int(k), limit), 
+        "psi": lambda k: gen_psi(int(k), limit), 
+        "G": lambda k: gen_G(int(k), limit), 
+        "H": lambda k: gen_H(int(k), limit), 
+        "fab": lambda a, b: gen_fab(int(a), int(b), limit), 
+        "__builtins__": {}
+    }
+
+    final_series = eval(python_formula, safe_env)
+    if not isinstance(final_series, QSeries): 
+        final_series = QSeries([int(final_series)] + [0]*limit, limit)
+    return final_series.coeffs
+
+def get_smart_expansion(latex_str, limit, persist_to_disk=False):
+    """
+    Checks if a larger or equal expansion already exists for this exact formula.
+    If yes, it instantly slices and returns the subset. 
+    If no, it computes the new ceiling and saves it.
+    """
+    if not persist_to_disk:
+        # --- TEMPORARY (RAM) MODE ---
+        cache = st.session_state.smart_ram_cache
+        if latex_str in cache:
+            if cache[latex_str]["limit"] >= limit:
+                st.toast(f"⚡ Smart Cache Hit: Sliced from {cache[latex_str]['limit']:,} terms in RAM!")
+                return cache[latex_str]["coeffs"][:limit + 1]
+        
+        # Compute and save new ceiling to RAM
+        coeffs = _core_expansion_engine(latex_str, limit)
+        st.session_state.smart_ram_cache[latex_str] = {"limit": limit, "coeffs": coeffs}
+        return coeffs
+
+    else:
+        # --- PERMANENT (DISK) MODE ---
+        cache_dir = ".streamlit/smart_cache"
+        os.makedirs(cache_dir, exist_ok=True)
+        
+        safe_name = hashlib.md5(latex_str.encode()).hexdigest()
+        file_path = os.path.join(cache_dir, f"{safe_name}.pkl")
+        
+        if os.path.exists(file_path):
+            with open(file_path, "rb") as f:
+                saved_data = pickle.load(f)
+            
+            if saved_data["limit"] >= limit:
+                st.toast(f"⚡ Smart Cache Hit: Sliced from {saved_data['limit']:,} terms on Disk!")
+                return saved_data["coeffs"][:limit + 1]
+        
+        # Compute and save new ceiling to Disk
+        coeffs = _core_expansion_engine(latex_str, limit)
+        with open(file_path, "wb") as f:
+            pickle.dump({"limit": limit, "coeffs": coeffs}, f)
+        return coeffs
+
 
 # ==========================================
 # --- SYMBOLIC ALGEBRA ENGINE ---
@@ -540,14 +615,14 @@ def run_infinite_family_miner():
     st.title("♾️ Infinite Family Congruence Miner")
     st.markdown("Discover generalized, infinite $q$-series congruences modulo any $p$. Supports complex polynomials via global Symbolic Engine.")
 
-    def ifm_targeted_sieve(coeffs, mod, max_k, bases, min_A0, max_A0):
+    def ifm_targeted_sieve(coeffs, mod, max_k, bases, min_A0, max_A0, safety_divisor):
         N = len(coeffs)
         hits = set()
         for base in bases:
             for A0 in range(min_A0, max_A0 + 1):
                 for k in range(max_k + 1):
                     A = A0 * (base ** k)
-                    if A < 2 or A > N // 6: continue 
+                    if A < 2 or A > N / safety_divisor: continue 
                     for B in range(A):
                         sequence = [coeffs[i] for i in range(B, N, A) if i != 0]
                         if len(sequence) >= 5 and all(term % mod == 0 for term in sequence):
@@ -587,21 +662,36 @@ def run_infinite_family_miner():
     with st.sidebar:
         st.header("⚙️ 1. Search Limits")
         st.caption("⚠️ *Generating > 50,000 terms takes significant time.*")
-        N = st.number_input("Terms to Generate ($N$)", min_value=1000, value=8000, step=1000)
+        N = st.number_input("Terms to Generate ($N$)", min_value=1000, value=75000, step=1000)
         max_k = st.number_input("Max Search Depth ($k$)", min_value=3, value=8)
         
+        st.markdown("### Memory / Caching Strategy")
+        cache_mode = st.radio(
+            "Save Computations:",
+            ["Temporarily (RAM - Clears on exit)", "Permanently (Disk - Survives reboots)"],
+            index=0
+        )
+        
+        st.markdown("### Advanced Optimization")
+        safety_divisor = st.selectbox(
+            "Safety Valve Threshold (N divisor)",
+            options=[6.0, 4.8],
+            format_func=lambda x: "Strict (N // 6) - Requires massive N" if x == 6.0 else "Optimized (N / 4.8) - Saves computation",
+            index=1  # Default to Optimized
+        )
+
         st.markdown("### Base Step Range ($A_0$)")
         col1, col2 = st.columns(2)
         min_A0 = col1.number_input("Min $A_0$", min_value=1, value=1)
         max_A0 = col2.number_input("Max $A_0$", min_value=min_A0, value=30)
         
         st.header("🎯 2. Target Vectors")
-        manual_mods = st.text_input("Target Moduli ($p$):", value="2, 3, 4, 5, 8")
-        manual_bases = st.text_input("Step Bases ($R$):", value="2, 3, 4, 5")
+        manual_mods = st.text_input("Target Moduli ($p$):", value="5")
+        manual_bases = st.text_input("Step Bases ($R$):", value="25")
 
     st.subheader("1. Define Parametric Series")
     st.info("Powered by the Global Symbolic Engine. Supports additions, subtractions, and special functions like `\\psi(q)`.")
-    user_input = st.text_area("Enter Series LaTeX Formula:", value=r"\frac{f_8}{f_1 f_3 f_4}")
+    user_input = st.text_area("Enter Series LaTeX Formula:", value=r"\frac{1}{f_1 f_2^2}")
     st.latex(user_input)
     st.markdown("---")
 
@@ -613,37 +703,22 @@ def run_infinite_family_miner():
             if not test_mods or not test_bases:
                 st.error("Please enter valid numbers."); st.stop()
 
-            def f(n): 
-                if int(n) <= 0: return QSeries([1] + [0]*N, N)
-                return QSeries(generate_base_pochhammer(int(n), N), N)
-            q_obj = QSeries([0, 1] + [0]*N, N)
-            python_formula = latex_to_python(user_input)
-            
-            safe_env = {
-                "f": f, "q": q_obj, "X": 1, 
-                "phi": lambda k: gen_phi(int(k), N), 
-                "psi": lambda k: gen_psi(int(k), N), 
-                "G": lambda k: gen_G(int(k), N), 
-                "H": lambda k: gen_H(int(k), N), 
-                "fab": lambda a, b: gen_fab(int(a), int(b), N), 
-                "__builtins__": {}
-            }
-
-            with st.spinner(f"Generating first {N:,} terms algebraically..."):
+            with st.spinner(f"Generating first {N:,} terms algebraically (Smart Cached)..."):
                 start_time = time.time()
-                final_series = eval(python_formula, safe_env)
-                if not isinstance(final_series, QSeries): 
-                    final_series = QSeries([int(final_series)] + [0]*N, N)
-                coeffs = final_series.coeffs
+                # Route the calculation through the Smart Cache
+                if cache_mode.startswith("Temporarily"):
+                    coeffs = get_smart_expansion(user_input, N, persist_to_disk=False)
+                else:
+                    coeffs = get_smart_expansion(user_input, N, persist_to_disk=True)
                 
-            st.success(f"Series expansion $O(q^{{{N}}})$ computed in {time.time() - start_time:.3f} seconds.")
+            st.success(f"Series expansion $O(q^{{{N}}})$ ready in {time.time() - start_time:.3f} seconds.")
             
             all_families = []
             all_raw_hits = {}
             
             with st.spinner("Sieving vectors and applying Triviality Filter..."):
                 for mod in test_mods:
-                    raw_hits = ifm_targeted_sieve(coeffs, mod, max_k, test_bases, min_A0, max_A0)
+                    raw_hits = ifm_targeted_sieve(coeffs, mod, max_k, test_bases, min_A0, max_A0, safety_divisor)
                     if raw_hits:
                         all_raw_hits[mod] = raw_hits
                         families = ifm_detect_infinite_families(raw_hits, mod)
@@ -746,27 +821,34 @@ def run_congruence_miner():
             
         st.divider()
         limit = st.number_input("Terms to compute (N)", value=3000, step=100)
+        
+        st.markdown("### Memory / Caching")
+        cache_mode = st.radio("Save Computations:", ["Temporarily (RAM)", "Permanently (Disk)"], key="miner_cache")
         run_btn = st.button("🚀 Run Miner", type="primary", use_container_width=True)
 
     if run_btn:
-        def f(n): 
-            if int(n) <= 0: return QSeries([1] + [0]*limit, limit)
-            return QSeries(generate_base_pochhammer(int(n), limit), limit)
-        q_obj = QSeries([0, 1] + [0]*limit, limit)
-        python_formula = latex_to_python(latex_input)
-        
-        def build_env(x_val=1):
-            return {"f": f, "q": q_obj, "X": x_val, "phi": lambda k: gen_phi(int(k), limit), "psi": lambda k: gen_psi(int(k), limit), "G": lambda k: gen_G(int(k), limit), "H": lambda k: gen_H(int(k), limit), "fab": lambda a, b: gen_fab(int(a), int(b), limit), "__builtins__": {}}
-        
         try:
+            if cache_mode.startswith("Temporarily"):
+                F_q = get_smart_expansion(latex_input, limit, persist_to_disk=False)
+            else:
+                F_q = get_smart_expansion(latex_input, limit, persist_to_disk=True)
+
             if mode == "Parametric Family Search":
+                def build_env(x_val=1):
+                    q_obj = QSeries([0, 1] + [0]*limit, limit)
+                    def f(n): 
+                        if int(n) <= 0: return QSeries([1] + [0]*limit, limit)
+                        return QSeries(generate_base_pochhammer(int(n), limit), limit)
+                    return {"f": f, "q": q_obj, "X": x_val, "phi": lambda k: gen_phi(int(k), limit), "psi": lambda k: gen_psi(int(k), limit), "G": lambda k: gen_G(int(k), limit), "H": lambda k: gen_H(int(k), limit), "fab": lambda a, b: gen_fab(int(a), int(b), limit), "__builtins__": {}}
+                
                 family_results = []
+                python_formula = latex_to_python(latex_input)
                 with st.spinner("Scanning..."):
                     for x_val in range(int(x_min), int(x_max) + 1):
                         try:
                             final_series = eval(python_formula, build_env(x_val))
                             if not isinstance(final_series, QSeries): final_series = QSeries([int(final_series)] + [0]*limit, limit)
-                            F_q = final_series.coeffs
+                            F_q_param = final_series.coeffs
                             found_for_x = []
                             fundamental_hits = []
                             
@@ -775,7 +857,6 @@ def run_congruence_miner():
                                     max_n = (limit - r) // current_k
                                     if max_n < 5: continue 
                                     
-                                    # TRIVIALITY FILTER
                                     is_trivial = False
                                     for hit_k, hit_r in fundamental_hits:
                                         if current_k % hit_k == 0 and r % hit_k == hit_r:
@@ -785,8 +866,8 @@ def run_congruence_miner():
                                     is_congruent = True
                                     for n_val in range(max_n + 1):
                                         idx = current_k * n_val + r
-                                        if idx == 0: continue # Skip c(0) anomaly
-                                        if idx <= limit and F_q[idx] % hunt_M != 0:
+                                        if idx == 0: continue 
+                                        if idx <= limit and F_q_param[idx] % hunt_M != 0:
                                             is_congruent = False; break
                                     if is_congruent: 
                                         fundamental_hits.append((current_k, r))
@@ -799,117 +880,110 @@ def run_congruence_miner():
                 st.info("✅ Trivial sub-progressions filtered out.")
                 st.table(pd.DataFrame(family_results))
 
-            else:
-                with st.spinner("Computing..."):
-                    final_series = eval(python_formula, build_env(1))
-                    if not isinstance(final_series, QSeries): final_series = QSeries([int(final_series)] + [0]*limit, limit)
-                    F_q = final_series.coeffs
+            elif mode == "Single Pattern Check":
+                success_count, total_checked, failures = 0, 0, []
+                max_n = (limit - B_val) // A_val
+                for n_val in range(max_n + 1):
+                    idx = A_val * n_val + B_val
+                    if idx == 0: continue 
+                    if idx > limit: break
+                    if F_q[idx] % M_val == 0: success_count += 1
+                    else: failures.append({"n": n_val})
+                if not failures: 
+                    st.success("🎉 Verified!")
+                    lat_str = rf"c({A_val}n + {B_val}) \equiv 0 \pmod{{{M_val}}}"
+                    st.latex(lat_str)
+                    add_to_clipboard("Verified Congruence", lat_str)
                     
-                if mode == "Single Pattern Check":
-                    success_count, total_checked, failures = 0, 0, []
-                    max_n = (limit - B_val) // A_val
+            elif mode == "Full Progression Sweep":
+                found_congruences = []
+                fundamental_hits = []
+                for r in range(sweep_k):
+                    max_n = (limit - r) // sweep_k
+                    if max_n < 5: continue 
+                    
+                    is_congruent = True
                     for n_val in range(max_n + 1):
-                        idx = A_val * n_val + B_val
-                        if idx == 0: continue # Skip c(0) anomaly
-                        if idx > limit: break
-                        if F_q[idx] % M_val == 0: success_count += 1
-                        else: failures.append({"n": n_val})
-                    if not failures: 
-                        st.success("🎉 Verified!")
-                        lat_str = rf"c({A_val}n + {B_val}) \equiv 0 \pmod{{{M_val}}}"
-                        st.latex(lat_str)
-                        add_to_clipboard("Verified Congruence", lat_str)
+                        idx = sweep_k * n_val + r
+                        if idx == 0: continue 
+                        if idx <= limit and F_q[idx] % sweep_M != 0: 
+                            is_congruent = False; break
+                    if is_congruent: 
+                        found_congruences.append((sweep_k, r, max_n + 1))
                         
-                elif mode == "Full Progression Sweep":
-                    found_congruences = []
-                    fundamental_hits = []
-                    for r in range(sweep_k):
-                        max_n = (limit - r) // sweep_k
+                if found_congruences:
+                    st.success(f"Discovered {len(found_congruences)} valid congruence(s)!")
+                    lat_strs = [rf"c({k}n + {r}) \equiv 0 \pmod{{{sweep_M}}}" for k, r, _ in found_congruences]
+                    for ls in lat_strs: st.latex(ls)
+                    add_to_clipboard("Sweep Congruences", " \\\\\n".join(lat_strs))
+
+            elif mode == "Prime Sieve Sweep (Primes ≤ n)":
+                primes = [p for p in range(2, int(max_p) + 1) if is_prime(p)]
+                sieve_results = []
+                progress_bar = st.progress(0)
+
+                with st.spinner(f"Sieving primes up to {int(max_p)}..."):
+                    for idx, p in enumerate(primes):
+                        found_for_p = False
+                        for current_k in range(2, int(hunt_max) + 1):
+                            if found_for_p: break
+                            for r in range(current_k):
+                                max_n = (limit - r) // current_k
+                                if max_n < 5: continue
+
+                                is_congruent = True
+                                for n_val in range(max_n + 1):
+                                    idx_q = current_k * n_val + r
+                                    if idx_q == 0: continue
+                                    if idx_q <= limit and F_q[idx_q] % p != 0:
+                                        is_congruent = False; break
+
+                                if is_congruent:
+                                    res_lat = rf"c({current_k}n + {r}) \equiv 0 \pmod{{{p}}}"
+                                    sieve_results.append({"Prime (p)": p, "k": current_k, "r": r, "Congruence": res_lat})
+                                    add_to_clipboard(f"Sieve Result Mod {p}", res_lat)
+                                    found_for_p = True
+                                    break
+                        progress_bar.progress((idx + 1) / len(primes))
+
+                if sieve_results:
+                    st.success(f"🎯 Discovered congruences for {len(sieve_results)} primes.")
+                    for item in sieve_results:
+                        st.latex(item["Congruence"])
+                    st.dataframe(pd.DataFrame(sieve_results).drop(columns=["Congruence"]), use_container_width=True)
+                else:
+                    st.warning("No congruences found for these primes within the search limit.")
+
+            else:
+                found_matches = []
+                for current_k in range(2, hunt_max + 1):
+                    for r in range(current_k):
+                        max_n = (limit - r) // current_k
                         if max_n < 5: continue 
+                        
+                        is_trivial = False
+                        for hit in found_matches:
+                            if current_k % hit['k'] == 0 and r % hit['k'] == hit['r']:
+                                is_trivial = True; break
+                        if is_trivial: continue
                         
                         is_congruent = True
                         for n_val in range(max_n + 1):
-                            idx = sweep_k * n_val + r
-                            if idx == 0: continue # Skip c(0) anomaly
-                            if idx <= limit and F_q[idx] % sweep_M != 0: 
+                            idx = current_k * n_val + r
+                            if idx == 0: continue 
+                            if idx <= limit and F_q[idx] % hunt_M != 0: 
                                 is_congruent = False; break
-                        if is_congruent: 
-                            found_congruences.append((sweep_k, r, max_n + 1))
-                            
-                    if found_congruences:
-                        st.success(f"Discovered {len(found_congruences)} valid congruence(s)!")
-                        lat_strs = [rf"c({k}n + {r}) \equiv 0 \pmod{{{sweep_M}}}" for k, r, _ in found_congruences]
-                        for ls in lat_strs: st.latex(ls)
-                        add_to_clipboard("Sweep Congruences", " \\\\\n".join(lat_strs))
-
-                elif mode == "Prime Sieve Sweep (Primes ≤ n)":
-                    primes = [p for p in range(2, int(max_p) + 1) if is_prime(p)]
-                    sieve_results = []
-                    progress_bar = st.progress(0)
-
-                    with st.spinner(f"Sieving primes up to {int(max_p)}..."):
-                        for idx, p in enumerate(primes):
-                            found_for_p = False
-                            for current_k in range(2, int(hunt_max) + 1):
-                                if found_for_p: break
-                                for r in range(current_k):
-                                    max_n = (limit - r) // current_k
-                                    if max_n < 5: continue
-
-                                    is_congruent = True
-                                    for n_val in range(max_n + 1):
-                                        idx_q = current_k * n_val + r
-                                        if idx_q == 0: continue
-                                        if idx_q <= limit and F_q[idx_q] % p != 0:
-                                            is_congruent = False; break
-
-                                    if is_congruent:
-                                        res_lat = rf"c({current_k}n + {r}) \equiv 0 \pmod{{{p}}}"
-                                        sieve_results.append({"Prime (p)": p, "k": current_k, "r": r, "Congruence": res_lat})
-                                        add_to_clipboard(f"Sieve Result Mod {p}", res_lat)
-                                        found_for_p = True
-                                        break
-                            progress_bar.progress((idx + 1) / len(primes))
-
-                    if sieve_results:
-                        st.success(f"🎯 Discovered congruences for {len(sieve_results)} primes.")
-                        for item in sieve_results:
-                            st.latex(item["Congruence"])
-                        st.dataframe(pd.DataFrame(sieve_results).drop(columns=["Congruence"]), use_container_width=True)
-                    else:
-                        st.warning("No congruences found for these primes within the search limit.")
-
-                else:
-                    found_matches = []
-                    for current_k in range(2, hunt_max + 1):
-                        for r in range(current_k):
-                            max_n = (limit - r) // current_k
-                            if max_n < 5: continue 
-                            
-                            # TRIVIALITY FILTER
-                            is_trivial = False
-                            for hit in found_matches:
-                                if current_k % hit['k'] == 0 and r % hit['k'] == hit['r']:
-                                    is_trivial = True; break
-                            if is_trivial: continue
-                            
-                            is_congruent = True
-                            for n_val in range(max_n + 1):
-                                idx = current_k * n_val + r
-                                if idx == 0: continue # Skip c(0) anomaly
-                                if idx <= limit and F_q[idx] % hunt_M != 0: 
-                                    is_congruent = False; break
-                            if is_congruent:
-                                found_matches.append({"k": current_k, "r": r, "terms": max_n + 1})
-                                if len(found_matches) >= hunt_bounty_limit: break
-                        if len(found_matches) >= hunt_bounty_limit: break
-                        
-                    if found_matches:
-                        st.success(f"🎯 Mined {len(found_matches)} congruences. (Trivial subsets ignored)")
-                        lat_strs = [rf"c({hit['k']}n + {hit['r']}) \equiv 0 \pmod{{{hunt_M}}}" for hit in found_matches]
-                        for ls in lat_strs: st.latex(ls)
-                        add_to_clipboard(f"Mined Congruences Mod {hunt_M}", " \\\\\n".join(lat_strs))
-                        
+                        if is_congruent:
+                            found_matches.append({"k": current_k, "r": r, "terms": max_n + 1})
+                            if len(found_matches) >= hunt_bounty_limit: break
+                    if len(found_matches) >= hunt_bounty_limit: break
+                    
+                if found_matches:
+                    st.success(f"🎯 Mined {len(found_matches)} congruences. (Trivial subsets ignored)")
+                    lat_strs = [rf"c({hit['k']}n + {hit['r']}) \equiv 0 \pmod{{{hunt_M}}}" for hit in found_matches]
+                    for ls in lat_strs: st.latex(ls)
+                    add_to_clipboard(f"Mined Congruences Mod {hunt_M}", " \\\\\n".join(lat_strs))
+                    
         except Exception as e: st.error(f"Failed: {e}")
 
 # ==========================================
@@ -925,18 +999,17 @@ def run_euler_explorer():
         max_degree = st.number_input("Max Degree (q-expansion)", value=200, step=50)
         progression = st.number_input("Base Progression (m)", value=2)
         offset = st.number_input("Offset (r)", value=0)
+        
+        st.markdown("### Memory / Caching")
+        cache_mode = st.radio("Save Computations:", ["Temporarily (RAM)", "Permanently (Disk)"], key="euler_cache")
         run_btn = st.button("🚀 Calculate Exponents", type="primary", use_container_width=True)
 
     if run_btn:
-        def f(n): return QSeries(generate_base_pochhammer(n, max_degree), max_degree)
-        q_obj = QSeries([0, 1] + [0]*max_degree, max_degree)
-        safe_env = {"f": f, "q": q_obj, "__builtins__": {}}
-        python_formula = latex_to_python(latex_input)
-
         try:
-            final_series = eval(python_formula, safe_env)
-            if not isinstance(final_series, QSeries): final_series = QSeries([int(final_series)] + [0]*max_degree, max_degree)
-            G_coeffs = final_series.coeffs
+            if cache_mode.startswith("Temporarily"):
+                G_coeffs = get_smart_expansion(latex_input, max_degree, persist_to_disk=False)
+            else:
+                G_coeffs = get_smart_expansion(latex_input, max_degree, persist_to_disk=True)
             
             H_coeffs_raw = [G_coeffs[i] for i in range(offset, max_degree + 1, progression)]
             first_term = H_coeffs_raw[0]
@@ -1329,12 +1402,32 @@ app_mode = st.sidebar.selectbox("Select Application Module:", [
     "🧠 Dissection Strategist"
 ])
 
-# --- GLOBAL CLIPBOARD UI ---
+# --- GLOBAL CLIPBOARD & CACHE UI ---
 st.sidebar.markdown("---")
-st.sidebar.subheader("📋 Global LaTeX Clipboard")
-if st.sidebar.button("🗑️ Clear Clipboard"):
-    st.session_state.latex_clipboard = []
-    st.rerun()
+st.sidebar.subheader("📋 System Controls")
+
+col_clip, col_cache = st.sidebar.columns(2)
+with col_clip:
+    if st.button("🗑️ Clear Clipboard"):
+        st.session_state.latex_clipboard = []
+        st.rerun()
+        
+with col_cache:
+    if st.button("🧹 Clear All Cache"):
+        # 1. Clear the RAM dictionary
+        st.session_state.smart_ram_cache = {}
+        # 2. Delete the Disk directory
+        cache_dir = ".streamlit/smart_cache"
+        if os.path.exists(cache_dir):
+            shutil.rmtree(cache_dir)
+        # 3. Clear Streamlit's native cache just in case
+        st.cache_data.clear()
+        
+        st.success("Cache completely wiped!")
+        time.sleep(1)
+        st.rerun()
+
+st.sidebar.divider()
 
 if st.session_state.latex_clipboard:
     combined_latex = "\n\n".join(st.session_state.latex_clipboard)
