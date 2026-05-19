@@ -156,6 +156,31 @@ def gen_fab(a, b, limit):
         n += 1
     return QSeries(C, limit)
 
+def gen_Psi_ab(a, b, limit):
+    C = [0] * (limit + 1)
+    
+    # Positive n (from 0 to infinity)
+    n = 0
+    while True:
+        exp_pos = a * (n * (n + 1) // 2) + b * (n * (n - 1) // 2)
+        if exp_pos <= limit:
+            C[exp_pos] += 1
+        elif n > 0: 
+            break
+        n += 1
+
+    # Negative n (from -1 down to -infinity)
+    n = -1
+    while True:
+        exp_neg = a * (n * (n + 1) // 2) + b * (n * (n - 1) // 2)
+        if exp_neg <= limit:
+            C[exp_neg] -= 1
+        else:
+            break
+        n -= 1
+        
+    return QSeries(C, limit)
+
 def q_pochhammer_series(k, n, limit):
     res = QSeries([1] + [0]*limit, limit)
     for j in range(1, n + 1):
@@ -191,6 +216,8 @@ def latex_to_python(latex_str):
     s = latex_str.replace('$', '').replace('\r', '').replace('\n', '')
     s = re.sub(r'\\(?:varphi|phi)\s*\(\s*q\^?\{?([0-9X]*)\}?\s*\)', lambda m: f"phi({m.group(1) or '1'})", s)
     s = re.sub(r'\\psi\s*\(\s*q\^?\{?([0-9X]*)\}?\s*\)', lambda m: f"psi({m.group(1) or '1'})", s)
+    s = re.sub(r'\\Psi\s*\(\s*q\^?\{?([0-9X]*)\}?\s*,\s*q\^?\{?([0-9X]*)\}?\s*\)', lambda m: f"Psi({m.group(1) or '1'}, {m.group(2) or '1'})", s)
+    s = re.sub(r'\\Psi\s*\(\s*([0-9X]+)\s*,\s*([0-9X]+)\s*\)', lambda m: f"Psi({m.group(1)}, {m.group(2)})", s)
     s = re.sub(r'G\s*\(\s*q\^?\{?([0-9X]*)\}?\s*\)', lambda m: f"G({m.group(1) or '1'})", s)
     s = re.sub(r'H\s*\(\s*q\^?\{?([0-9X]*)\}?\s*\)', lambda m: f"H({m.group(1) or '1'})", s)
     s = re.sub(r'f\s*\(\s*q\^?\{?([0-9X]*)\}?\s*,\s*q\^?\{?([0-9X]*)\}?\s*\)', lambda m: f"fab({m.group(1) or '1'}, {m.group(2) or '1'})", s)
@@ -224,7 +251,7 @@ def latex_to_python(latex_str):
     s = re.sub(r'([f])([qX])', r'\1*\2', s)        
     s = re.sub(r'\)\(', r')*(', s)                
     s = re.sub(r'([qX])\(', r'\1*(', s)            
-    s = re.sub(r'\)(\d)', r')*\1', s)               
+    s = re.sub(r'\)(\d)', r')*\1', s)                
     s = re.sub(r'(f\([^)]+\))(f\()', r'\1*\2', s)
     s = re.sub(r'(\d)\(', r'\1*(', s)
     
@@ -238,7 +265,6 @@ def is_prime(n):
     for i in range(2, int(n**0.5) + 1):
         if n % i == 0: return False
     return True
-
 
 # ==========================================
 # --- SMART CACHING ARCHITECTURE ---
@@ -262,6 +288,7 @@ def _core_expansion_engine(latex_str, limit):
         "G": lambda k: gen_G(int(k), limit), 
         "H": lambda k: gen_H(int(k), limit), 
         "fab": lambda a, b: gen_fab(int(a), int(b), limit), 
+        "Psi": lambda a, b: gen_Psi_ab(int(a), int(b), limit),
         "__builtins__": {}
     }
 
@@ -277,40 +304,32 @@ def get_smart_expansion(latex_str, limit, persist_to_disk=False):
     If no, it computes the new ceiling and saves it.
     """
     if not persist_to_disk:
-        # --- TEMPORARY (RAM) MODE ---
         cache = st.session_state.smart_ram_cache
         if latex_str in cache:
             if cache[latex_str]["limit"] >= limit:
                 st.toast(f"⚡ Smart Cache Hit: Sliced from {cache[latex_str]['limit']:,} terms in RAM!")
                 return cache[latex_str]["coeffs"][:limit + 1]
         
-        # Compute and save new ceiling to RAM
         coeffs = _core_expansion_engine(latex_str, limit)
         st.session_state.smart_ram_cache[latex_str] = {"limit": limit, "coeffs": coeffs}
         return coeffs
-
     else:
-        # --- PERMANENT (DISK) MODE ---
         cache_dir = ".streamlit/smart_cache"
         os.makedirs(cache_dir, exist_ok=True)
-        
         safe_name = hashlib.md5(latex_str.encode()).hexdigest()
         file_path = os.path.join(cache_dir, f"{safe_name}.pkl")
         
         if os.path.exists(file_path):
             with open(file_path, "rb") as f:
                 saved_data = pickle.load(f)
-            
             if saved_data["limit"] >= limit:
                 st.toast(f"⚡ Smart Cache Hit: Sliced from {saved_data['limit']:,} terms on Disk!")
                 return saved_data["coeffs"][:limit + 1]
         
-        # Compute and save new ceiling to Disk
         coeffs = _core_expansion_engine(latex_str, limit)
         with open(file_path, "wb") as f:
             pickle.dump({"limit": limit, "coeffs": coeffs}, f)
         return coeffs
-
 
 # ==========================================
 # --- SYMBOLIC ALGEBRA ENGINE ---
@@ -351,6 +370,18 @@ class SymTerm:
                 
         new_etas = {k: v for k, v in final_etas.items() if v != 0}
         return SymTerm(self.coeff, self.q_power, new_etas)
+
+    def apply_Up(self, p, r=0):
+        if self.q_power % p != r: 
+            return None
+            
+        new_etas = {}
+        for k, v in self.etas.items():
+            if k % p != 0: 
+                raise ValueError(f"Cannot formally apply U_{p} to f_{{{k}}}. All eta subscripts must be multiples of {p}.")
+            new_etas[k // p] = v
+            
+        return SymTerm(self.coeff, (self.q_power - r) // p, new_etas)
 
     def __mul__(self, other):
         if isinstance(other, (int, float, Fraction)): return SymTerm(self.coeff * other, self.q_power, self.etas)
@@ -424,6 +455,14 @@ class SymExpr:
     def simplify_mod(self, p):
         if p < 2: return self
         return SymExpr([t.simplify_mod(p) for t in self.terms])
+
+    def apply_Up(self, p, r=0):
+        new_terms = []
+        for t in self.terms:
+            new_t = t.apply_Up(p, r)
+            if new_t is not None: 
+                new_terms.append(new_t)
+        return SymExpr(new_terms) if new_terms else SymExpr([SymTerm(0)])
 
     def __add__(self, other):
         if isinstance(other, (int, float, Fraction)):
@@ -677,7 +716,7 @@ def run_infinite_family_miner():
             "Safety Valve Threshold (N divisor)",
             options=[6.0, 4.8],
             format_func=lambda x: "Strict (N // 6) - Requires massive N" if x == 6.0 else "Optimized (N / 4.8) - Saves computation",
-            index=1  # Default to Optimized
+            index=1
         )
 
         st.markdown("### Base Step Range ($A_0$)")
@@ -705,7 +744,6 @@ def run_infinite_family_miner():
 
             with st.spinner(f"Generating first {N:,} terms algebraically (Smart Cached)..."):
                 start_time = time.time()
-                # Route the calculation through the Smart Cache
                 if cache_mode.startswith("Temporarily"):
                     coeffs = get_smart_expansion(user_input, N, persist_to_disk=False)
                 else:
@@ -788,6 +826,17 @@ def run_congruence_miner():
         latex_input = st.text_area("Enter LaTeX Formula:", value=st.session_state.miner_latex_input, height=80)
         st.latex(latex_input)
         st.divider()
+
+        st.markdown("### 🧮 Inject False Theta $\\Psi(a,b)$")
+        col_a, col_b = st.columns(2)
+        psi_a = col_a.number_input("Parameter a (power of q)", value=1, min_value=0, key="psi_a")
+        psi_b = col_b.number_input("Parameter b (power of q)", value=2, min_value=0, key="psi_b")
+        
+        if st.button("Inject $\\Psi(q^a, q^b)$"):
+            st.session_state.miner_latex_input = rf"\Psi(q^{{{psi_a}}}, q^{{{psi_b}}})"
+            st.rerun()
+            
+        st.divider()
         
         st.header("🔍 2. Analysis Mode")
         mode = st.radio("Select Tool:", [
@@ -839,7 +888,7 @@ def run_congruence_miner():
                     def f(n): 
                         if int(n) <= 0: return QSeries([1] + [0]*limit, limit)
                         return QSeries(generate_base_pochhammer(int(n), limit), limit)
-                    return {"f": f, "q": q_obj, "X": x_val, "phi": lambda k: gen_phi(int(k), limit), "psi": lambda k: gen_psi(int(k), limit), "G": lambda k: gen_G(int(k), limit), "H": lambda k: gen_H(int(k), limit), "fab": lambda a, b: gen_fab(int(a), int(b), limit), "__builtins__": {}}
+                    return {"f": f, "q": q_obj, "X": x_val, "phi": lambda k: gen_phi(int(k), limit), "psi": lambda k: gen_psi(int(k), limit), "G": lambda k: gen_G(int(k), limit), "H": lambda k: gen_H(int(k), limit), "fab": lambda a, b: gen_fab(int(a), int(b), limit), "Psi": lambda a, b: gen_Psi_ab(int(a), int(b), limit), "__builtins__": {}}
                 
                 family_results = []
                 python_formula = latex_to_python(latex_input)
@@ -1285,6 +1334,15 @@ def run_dissection_dictionary():
                 scale = st.number_input(f"Scale $q \\to q^m$ (Slot {i+1})", value=1, min_value=1, key=f"scale_{i}")
                 selected_factors.append((factor, scale))
 
+    st.write("---")
+    st.write("### ⚡ Apply $U_p$ Operator")
+    st.info("Extracts terms where the $q$-power is $\\equiv r \\pmod p$, then scales the generating function $q \\to q^{1/p}$.")
+    
+    col_up_check, col_up_p, col_up_r = st.columns([1, 1, 1])
+    apply_up = col_up_check.checkbox("Enable $U_p$ Operator")
+    up_p = col_up_p.number_input("Prime/Modulo (p):", value=2, min_value=2, step=1, disabled=not apply_up)
+    up_r = col_up_r.number_input("Extract Remainder (r):", value=0, min_value=0, step=1, disabled=not apply_up)
+
     if st.button("Calculate Final Product", type="primary", use_container_width=True):
         try:
             env = get_sym_env()
@@ -1309,6 +1367,23 @@ def run_dissection_dictionary():
             st.latex(f"{lhs_combined} = {combined_expr.to_latex()}")
             add_to_clipboard("Combined Expansion", f"{lhs_combined} &= {combined_expr.to_latex()}")
             
+            # --- U_p Operator Logic ---
+            if apply_up:
+                try:
+                    up_expr = combined_expr.apply_Up(up_p, up_r)
+                    st.success(f"### Result after $U_{{{up_p}}}$ Operator (extracted $q^{{{up_r}}}$)")
+                    
+                    lat_lhs_up = f"U_{{{up_p}}}\\left( q^{{{-up_r}}} \\left( {lhs_combined} \\right) \\right)" if up_r > 0 else f"U_{{{up_p}}}\\left( {lhs_combined} \\right)"
+                    st.latex(f"{lat_lhs_up} = {up_expr.to_latex()}")
+                    add_to_clipboard(f"U_{up_p} Operator", f"{lat_lhs_up} &= {up_expr.to_latex()}")
+                    
+                    # Update combined_expr for further modulo reduction if chained
+                    combined_expr = up_expr
+                    lhs_combined = lat_lhs_up
+                except ValueError as ve:
+                    st.error(f"❌ **U-Operator Error:** {ve}")
+            
+            # --- Modulo Reduction Logic ---
             if mod_p_multi >= 2:
                 mod_expr = combined_expr.simplify_mod(mod_p_multi)
                 st.warning(f"### Simplified Modulo {mod_p_multi}")
