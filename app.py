@@ -15,76 +15,10 @@ from functools import reduce
 # ==========================================
 # --- INITIALIZE APP, BRANDING & STATE ---
 # ==========================================
-st.set_page_config(page_title="Ramanujan Laboratory Pro", page_icon="∞", layout="wide")
-
-st.markdown(
-    """
-    <style>
-      .stApp {
-        background:
-          radial-gradient(circle at 8% 4%, rgba(91, 124, 250, .13), transparent 28%),
-          radial-gradient(circle at 92% 7%, rgba(156, 86, 255, .11), transparent 26%);
-      }
-      .ram-hero {
-        padding: 1.25rem 1.45rem;
-        border-radius: 20px;
-        border: 1px solid rgba(130, 140, 180, .25);
-        background: linear-gradient(120deg, rgba(28,35,62,.94), rgba(53,32,88,.91));
-        box-shadow: 0 16px 42px rgba(20, 24, 50, .22);
-        margin-bottom: 1rem;
-      }
-      .ram-hero h1 { margin: 0; color: #ffffff; font-size: 2.05rem; }
-      .ram-hero p { margin: .35rem 0 0; color: #d9ddff; font-size: 1rem; }
-      .ram-card {
-        border: 1px solid rgba(128, 139, 180, .22);
-        border-radius: 16px;
-        padding: .9rem 1rem;
-        background: rgba(255,255,255,.035);
-      }
-      div[data-testid="stMetric"] {
-        border: 1px solid rgba(128, 139, 180, .20);
-        border-radius: 14px;
-        padding: .55rem .75rem;
-        background: rgba(255,255,255,.025);
-      }
-      div[data-testid="stCodeBlock"] { border-radius: 14px; }
-      .small-note { opacity: .76; font-size: .88rem; }
-      .derivation-step {
-        border-left: 4px solid rgba(123, 97, 255, .78);
-        border-radius: 12px;
-        padding: .78rem 1rem;
-        margin: .55rem 0 .9rem;
-        background: linear-gradient(90deg, rgba(111,82,255,.10), rgba(255,255,255,.018));
-      }
-      .derivation-step strong { color: #dcd6ff; }
-      .identity-note {
-        border: 1px solid rgba(114, 201, 255, .22);
-        border-radius: 12px;
-        padding: .65rem .8rem;
-        margin: .4rem 0;
-        background: rgba(68, 143, 190, .055);
-      }
-      .proof-badge {
-        display: inline-block;
-        border-radius: 999px;
-        padding: .22rem .62rem;
-        margin-right: .35rem;
-        font-size: .78rem;
-        border: 1px solid rgba(145, 125, 255, .33);
-        background: rgba(118, 88, 255, .10);
-      }
-    </style>
-    <div class="ram-hero">
-      <h1>∞ Ramanujan Laboratory Pro</h1>
-      <p>Audited eta-quotients, verified dissections, transparent identity paths, and residue extraction.</p>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+st.set_page_config(page_title="Ramanujan Laboratory", page_icon="♾️", layout="wide")
 
 if "latex_clipboard" not in st.session_state:
     st.session_state.latex_clipboard = []
-
 
 def add_to_clipboard(source, latex_content):
     if not latex_content.strip().startswith("$$") and not latex_content.strip().startswith("%"):
@@ -93,47 +27,19 @@ def add_to_clipboard(source, latex_content):
     if entry not in st.session_state.latex_clipboard:
         st.session_state.latex_clipboard.append(entry)
 
-
-def safe_widget_key(value):
-    return re.sub(r"[^A-Za-z0-9_-]+", "_", str(value)).strip("_")[:120] or "latex"
-
-
-def latex_document(title, body):
-    return (
-        "\\documentclass[11pt]{article}\n"
-        "\\usepackage{amsmath,amssymb}\n"
-        "\\usepackage[margin=1in]{geometry}\n"
-        "\\newcommand{\\f}[1]{f_{#1}}\n"
-        "\\begin{document}\n"
-        f"\\section*{{{title}}}\n"
-        f"{body}\n"
-        "\\end{document}\n"
+header_left, header_right = st.columns([3, 1])
+with header_right:
+    st.markdown(
+        """
+        <div style="text-align: right; color: gray; font-size: 15px; margin-top: -20px;">
+            <b>Developed by Pankaj Gogoi</b><br><span style="font-size:11px;">Advanced audited build</span><br>
+            <i>Tezpur University</i><br>
+            <span style="font-size: 11px;">gopankajgo07@gmail.com</span>
+        </div>
+        """,
+        unsafe_allow_html=True
     )
-
-
-def render_latex_export(title, latex_code, key, filename=None, add_global=True):
-    """Show copyable LaTeX and optional clipboard/download controls."""
-    st.markdown(f"**{title}**")
-    st.code(latex_code, language="latex")
-    cols = st.columns(2 if add_global else 1)
-    if add_global:
-        with cols[0]:
-            if st.button("Add to global LaTeX clipboard", key=f"clip_{safe_widget_key(key)}", use_container_width=True):
-                add_to_clipboard(title, latex_code)
-                st.toast("LaTeX added to the global clipboard.")
-        download_col = cols[1]
-    else:
-        download_col = cols[0]
-    with download_col:
-        st.download_button(
-            "Download .tex snippet",
-            data=latex_code,
-            file_name=filename or f"{safe_widget_key(key).lower()}.tex",
-            mime="text/x-tex",
-            key=f"download_{safe_widget_key(key)}",
-            use_container_width=True,
-        )
-
+st.markdown("---")
 
 # ==========================================
 # --- SHARED MATH ENGINE & PARSER ---
@@ -784,24 +690,6 @@ class EtaDictTerm:
         if not isinstance(power, int):
             raise ValueError("Eta-product exponents must be integers.")
         return EtaDictTerm({d: e*power for d, e in self.terms.items()}, self.scalar**power)
-
-    @staticmethod
-    def _reject_additive_input():
-        raise ValueError(
-            "This eta-multiplier field accepts one product/quotient only. "
-            "For sums or differences, use the Automatic p-Dissection Solver or the Composite Dissection Lab."
-        )
-
-    def __add__(self, other):
-        self._reject_additive_input()
-
-    __radd__ = __add__
-
-    def __sub__(self, other):
-        self._reject_additive_input()
-
-    def __rsub__(self, other):
-        self._reject_additive_input()
 
 
 def parse_eta_product(latex_input):
@@ -1776,1024 +1664,102 @@ def format_truncated_component(coeffs, max_display=14):
     return " + ".join(pieces).replace("+ -", "- ")
 
 
-
-def format_exact_number(value):
-    value = value if isinstance(value, Fraction) else Fraction(value)
-    if value.denominator == 1:
-        return str(value.numerator)
-    return rf"\frac{{{value.numerator}}}{{{value.denominator}}}"
-
-
-def dissection_library_latex(items):
-    lines = []
-    for item in items:
-        status = "verified" if item.get("verified") else "not verified"
-        lines.append(
-            rf"% {item['p']}-dissection; {status} through q^{{{item.get('limit', '?')}}}; {item['source']}\n"
-            rf"{item['latex_lhs']} &= {item['latex_rhs']}"
-        )
-    return "\\begin{aligned}\n" + " \\\\\n".join(lines) + "\n\\end{aligned}"
-
-
-def component_equation_latex(p, r, rhs):
-    return rf"\sum_{{n\ge 0}}a({p}n+{r})q^n={rhs}"
-
-
-def _parenthesize_latex(value):
-    value = str(value).strip()
-    if value in {"", "1"}:
-        return "1"
-    return rf"\left({value}\right)"
-
-
-def _product_latex(factors):
-    clean = [str(f).strip() for f in factors if str(f).strip() not in {"", "1"}]
-    return r"\,".join(clean) if clean else "1"
-
-
-def _power_latex(base, exponent):
-    base = str(base).strip()
-    exponent = int(exponent)
-    if exponent == 1:
-        return _parenthesize_latex(base)
-    return rf"\left({base}\right)^{{{exponent}}}"
-
-
-def _term_prefactor_expression(term):
-    return SymExpr([SymTerm(term.coeff, term.q_power, {}, term.specials)])
-
-
-def _plan_residual_expression(plan):
-    return SymExpr([SymTerm(1, 0, plan.get("residual", {}))])
-
-
-def _identity_trace_record(candidate, count):
-    item = candidate["item"]
-    scale = int(candidate["scale"])
-    return {
-        "name": item.get("nice_name", item.get("name", "identity")),
-        "source": item.get("source", "Stored verified identity"),
-        "count": int(count),
-        "scale": scale,
-        "base_lhs": item["latex_lhs"],
-        "base_rhs": item["latex_rhs"],
-        "scaled_lhs": scale_latex_lhs(item["latex_lhs"], scale),
-        "scaled_rhs": candidate["rhs"].to_latex(),
-        "verified_through": item.get("limit"),
-    }
-
-
-def build_term_derivation_record(row, term_index):
-    term_expr = SymExpr([row["term"]])
-    prefactor = _term_prefactor_expression(row["term"])
-    residual = _plan_residual_expression(row["plan"])
-    identities = [_identity_trace_record(candidate, count) for candidate, count in row["plan"]["factors"]]
-
-    factorized_factors = []
-    substituted_factors = []
-    prefactor_latex = prefactor.to_latex()
-    residual_latex = residual.to_latex()
-    if prefactor_latex != "1":
-        factorized_factors.append(_parenthesize_latex(prefactor_latex))
-        substituted_factors.append(_parenthesize_latex(prefactor_latex))
-    if residual_latex != "1":
-        factorized_factors.append(_parenthesize_latex(residual_latex))
-        substituted_factors.append(_parenthesize_latex(residual_latex))
-    for identity in identities:
-        factorized_factors.append(_power_latex(identity["scaled_lhs"], identity["count"]))
-        substituted_factors.append(_power_latex(identity["scaled_rhs"], identity["count"]))
-
-    return {
-        "index": int(term_index),
-        "input": term_expr.to_latex(),
-        "prefactor": prefactor_latex,
-        "residual": residual_latex,
-        "identities": identities,
-        "factorized": _product_latex(factorized_factors),
-        "substituted": _product_latex(substituted_factors),
-        "result": row["result"].to_latex(),
-    }
-
-
-def build_exact_derivation_data(input_expr, exact, p):
-    if not exact.get("success"):
-        return None
-    p = int(p)
-    terms = [build_term_derivation_record(row, i) for i, row in enumerate(exact["certificate"], 1)]
-    component_rows = []
-    for r in range(p):
-        component = exact["components"][r]
-        component_rows.append({
-            "r": r,
-            "function": component.to_latex(),
-            "equation": component_equation_latex(p, r, component.to_latex()),
-        })
-    return {
-        "p": p,
-        "input": input_expr.to_latex(),
-        "terms": terms,
-        "combined": exact["expression"].to_latex(),
-        "components": component_rows,
-        "verified_through": exact.get("verified_through"),
-    }
-
-
-def exact_derivation_latex(input_expr, exact, p, heading="Step-by-step dissection derivation"):
-    data = build_exact_derivation_data(input_expr, exact, p)
-    if data is None:
-        return "% No exact derivation was available."
-
-    rowbreak = r"\\" + "\n"
-
-    def aligned(rows):
-        return "\\[\n\\begin{aligned}\n" + rowbreak.join(rows) + "\n\\end{aligned}\n\\]"
-
-    lines = [
-        rf"\subsection*{{{heading}}}",
-        "Let",
-        rf"\[F(q)={data['input']}=\sum_{{n\ge0}}a(n)q^n.\]",
-        rf"We construct the {data['p']}-dissection term by term. Every identity below is taken from the verified identity library.",
-    ]
-
-    for term in data["terms"]:
-        lines.append(rf"\paragraph{{Term {term['index']}.}}")
-        lines.append(rf"Start with \[T_{{{term['index']}}}(q)={term['input']}.\]")
-        lines.append(rf"Separate the factors already depending only on $q^{{{data['p']}}}$ and factor the remaining eta quotient as")
-        lines.append(aligned([rf"T_{{{term['index']}}}(q)&={term['factorized']}."]))
-
-        for j, identity in enumerate(term["identities"], 1):
-            lines.append(rf"\medskip\noindent\textbf{{Identity {term['index']}.{j}.}}")
-            lines.append(rf"% Source: {identity['source']}")
-            identity_rows = [rf"{identity['base_lhs']}&={identity['base_rhs']}"]
-            if identity["scale"] != 1:
-                identity_rows.append(
-                    rf"{identity['scaled_lhs']}&={identity['scaled_rhs']}\qquad(q\mapsto q^{{{identity['scale']}}})"
-                )
-            lines.append(aligned(identity_rows))
-            if identity["count"] != 1:
-                lines.append(rf"This identity is used to the power ${identity['count']}$." )
-
-        lines.append("Substituting these identities and simplifying gives")
-        lines.append(aligned([
-            rf"T_{{{term['index']}}}(q)&={term['substituted']}",
-            rf"&={term['result']}.",
-        ]))
-
-    sum_terms = "+".join(rf"T_{{{term['index']}}}(q)" for term in data["terms"])
-    lines.extend([
-        r"\paragraph{Recombination.}",
-        aligned([
-            rf"F(q)&={sum_terms}",
-            rf"&={data['combined']}.",
-        ]),
-        r"Now collect terms according to their exponent modulo $p$. Write",
-        rf"\[F(q)=\sum_{{r=0}}^{{{data['p']-1}}}q^rF_r(q^{{{data['p']}}}).\]",
-    ])
-    for component in data["components"]:
-        lines.append(rf"\[F_{{{component['r']}}}(q)={component['function']}.\]")
-    lines.append(r"Therefore, retain the powers $q^{pn+r}$, divide by $q^r$, and replace $q^p$ by $q$. This yields")
-    lines.append(aligned([row["equation"].replace("=", "&=", 1) for row in data["components"]]))
-    if data["verified_through"] is not None:
-        lines.append(rf"The final identity was independently coefficient-checked through $q^{{{data['verified_through']}}}$." )
-    return "\n\n".join(lines)
-
-def render_exact_derivation_path(input_expr, exact, p, key_prefix, show_export=True):
-    data = build_exact_derivation_data(input_expr, exact, p)
-    if data is None:
-        st.info("No exact derivation path is available because no exact symbolic dissection was completed.")
-        return None
-
-    identity_count = sum(len(term["identities"]) for term in data["terms"])
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Input terms", len(data["terms"]))
-    m2.metric("Identity substitutions", identity_count)
-    m3.metric("Coefficient audit", f"q^{data['verified_through']}" if data["verified_through"] is not None else "—")
-    st.markdown(
-        '<span class="proof-badge">Exact symbolic path</span>'
-        '<span class="proof-badge">Verified identity library</span>'
-        '<span class="proof-badge">Independent coefficient audit</span>',
-        unsafe_allow_html=True,
-    )
-
-    for term in data["terms"]:
-        with st.expander(f"Term {term['index']}: show the complete substitution path", expanded=(term["index"] == 1)):
-            st.markdown('<div class="derivation-step"><strong>Step A — Isolate the term.</strong><br>Separate the scalar, explicit power of q, and factors already depending only on qᵖ.</div>', unsafe_allow_html=True)
-            st.latex(rf"T_{{{term['index']}}}(q)={term['input']}")
-            st.latex(rf"T_{{{term['index']}}}(q)={term['factorized']}")
-
-            st.markdown('<div class="derivation-step"><strong>Step B — Apply the verified identities.</strong><br>The base identity and the scaled version actually used are both shown.</div>', unsafe_allow_html=True)
-            for j, identity in enumerate(term["identities"], 1):
-                st.markdown(f"**Identity {term['index']}.{j}: {identity['name']}**")
-                left, right = st.columns(2)
-                with left:
-                    st.caption("Stored identity")
-                    st.latex(rf"{identity['base_lhs']}={identity['base_rhs']}")
-                with right:
-                    st.caption("Identity used in this calculation")
-                    st.latex(rf"{identity['scaled_lhs']}={identity['scaled_rhs']}")
-                scale_text = "without scaling" if identity["scale"] == 1 else rf"after replacing q by q^{identity['scale']}"
-                power_text = "once" if identity["count"] == 1 else f"to the power {identity['count']}"
-                st.markdown(
-                    f'<div class="identity-note">Used {scale_text}, {power_text}. Source: {identity["source"]}</div>',
-                    unsafe_allow_html=True,
-                )
-
-            st.markdown('<div class="derivation-step"><strong>Step C — Substitute and simplify.</strong><br>Replace every selected left-hand side by its verified right-hand side and expand algebraically.</div>', unsafe_allow_html=True)
-            st.latex(rf"T_{{{term['index']}}}(q)={term['substituted']}")
-            st.latex(rf"T_{{{term['index']}}}(q)={term['result']}")
-
-    st.markdown("### Recombine the transformed terms")
-    st.latex(rf"F(q)={data['combined']}")
-    st.markdown("### Separate the residue classes")
-    st.latex(rf"F(q)=\sum_{{r=0}}^{{{data['p']-1}}}q^rF_r(q^{{{data['p']}}})")
-    for component in data["components"]:
-        st.latex(rf"F_{{{component['r']}}}(q)={component['function']}")
-        st.latex(component["equation"])
-    st.info(r"Extraction rule: retain q^{pn+r}, divide by q^r, and replace q^p by q.")
-
-    latex_code = exact_derivation_latex(input_expr, exact, p)
-    if show_export:
-        render_latex_export(
-            "Complete step-by-step LaTeX derivation",
-            latex_code,
-            key=f"{key_prefix}_derivation",
-            filename=f"{safe_widget_key(key_prefix).lower()}_step_by_step_derivation.tex",
-        )
-    return latex_code
-
-
-def deep_derivation_latex(initial_expr, p, residue, deep):
-    if not deep.get("success"):
-        return "% No exact deep-extraction derivation was available."
-    p = int(p)
-    digits = base_p_digits(int(residue), p, len(deep["records"]))
-    rowbreak = r"\\" + "\n"
-
-    def aligned(rows):
-        return "\\[\n\\begin{aligned}\n" + rowbreak.join(rows) + "\n\\end{aligned}\n\\]"
-
-    lines = [
-        r"\subsection*{Step-by-step iterated residue extraction}",
-        rf"Set $A_0(q)={initial_expr.to_latex()}$.",
-        rf"The residue ${residue}$ has least-significant-first base-${p}$ digits $({', '.join(map(str, digits))})$.",
-    ]
-    current = initial_expr
-    current_residue = 0
-    modulus = 1
-    for level, record in enumerate(deep["records"], 1):
-        digit = int(record["digit"])
-        lines.append(rf"\subsubsection*{{Level {level}: extract residue {digit} modulo {p}}}")
-        lines.append(exact_derivation_latex(current, record["dissection"], p, heading=f"Level {level} dissection"))
-        current_residue += modulus * digit
-        modulus *= p
-        next_expr = record["expression"].to_latex()
-        lines.append(rf"Write $A_{{{level-1}}}(q)=\sum_{{n\ge0}}b_{{{level-1}}}(n)q^n$. Then")
-        lines.append(aligned([
-            rf"A_{{{level}}}(q)&=\sum_{{n\ge0}}b_{{{level-1}}}({p}n+{digit})q^n",
-            rf"&={next_expr}.",
-        ]))
-        lines.append(rf"Thus $A_{{{level}}}(q)=\sum_{{n\ge0}}a({modulus}n+{current_residue})q^n$.")
-        current = record["expression"]
-    return "\n\n".join(lines)
-
-def render_deep_derivation_path(initial_expr, p, residue, deep, key_prefix):
-    if not deep.get("success"):
-        st.info("The exact iteration stopped before a complete deep derivation could be produced.")
-        return None
-    p = int(p)
-    current = initial_expr
-    current_residue = 0
-    modulus = 1
-    digits = base_p_digits(int(residue), p, len(deep["records"]))
-    st.markdown(f"Base-{p} extraction digits, used from first to last: **{digits}**")
-    for level, record in enumerate(deep["records"], 1):
-        digit = int(record["digit"])
-        current_residue += modulus * digit
-        modulus *= p
-        with st.expander(f"Level {level}: extract digit {digit}, producing a({modulus}n+{current_residue})", expanded=(level == 1)):
-            st.markdown('<div class="derivation-step"><strong>Dissect the current generating function.</strong><br>Each eta monomial is replaced using verified scaled identities.</div>', unsafe_allow_html=True)
-            st.latex(rf"A_{{{level-1}}}(q)={current.to_latex()}")
-            for term_idx, row in enumerate(record["dissection"]["certificate"], 1):
-                term_record = build_term_derivation_record(row, term_idx)
-                st.markdown(f"**Term {term_idx} identities**")
-                for identity in term_record["identities"]:
-                    st.latex(rf"{identity['scaled_lhs']}={identity['scaled_rhs']}")
-                    st.caption(f"{identity['name']} — {identity['source']}")
-            st.markdown('<div class="derivation-step"><strong>Select the required residue.</strong><br>Keep the indicated q-exponents, divide by the residue power, and replace qᵖ by q.</div>', unsafe_allow_html=True)
-            st.latex(rf"A_{{{level-1}}}(q)=\sum_{{n\ge0}}b_{{{level-1}}}(n)q^n")
-            st.latex(rf"A_{{{level}}}(q)=\sum_{{n\ge0}}b_{{{level-1}}}({p}n+{digit})q^n={record['expression'].to_latex()}")
-            st.success(f"This is the generating function for a({modulus}n+{current_residue}).")
-        current = record["expression"]
-
-    latex_code = deep_derivation_latex(initial_expr, p, residue, deep)
-    render_latex_export(
-        "Complete iterated-extraction LaTeX derivation",
-        latex_code,
-        key=f"{key_prefix}_deep_derivation",
-        filename=f"{safe_widget_key(key_prefix).lower()}_deep_derivation.tex",
-    )
-    return latex_code
-
-
-def coefficient_derivation_latex(input_expr, p, coeffs, max_display=14):
-    p = int(p)
-    degree = len(coeffs) - 1
-    rows = []
-    for r in range(p):
-        component = coeffs[r::p]
-        rows.append(truncated_component_latex(component, p, r, max_display=max_display))
-    rowbreak = r"\\" + "\n"
-    aligned = "\\[\n\\begin{aligned}\n" + rowbreak.join(
-        row.replace("=", "&=", 1) for row in rows
-    ) + "\n\\end{aligned}\n\\]"
-    return "\n\n".join([
-        r"\subsection*{Coefficient-based dissection path}",
-        rf"Start with $F(q)={input_expr.to_latex()}=\sum_{{n\ge0}}a(n)q^n$ and compute its coefficients through $q^{{{degree}}}$.",
-        rf"For each $r=0,1,\ldots,{p-1}$, retain the coefficients whose indices are congruent to $r$ modulo ${p}$:",
-        rf"\[F_r(q)=\sum_{{n\ge0}}a({p}n+r)q^n.\]",
-        aligned,
-        rf"The truncated reconstruction is $F(q)=\sum_{{r=0}}^{{{p-1}}}q^rF_r(q^{{{p}}})+O(q^{{{degree+1}}})$.",
-        r"This is a finite coefficient calculation, not an identity proof. No stored dissection identity was used.",
-    ])
-
-
-def render_coefficient_derivation_path(input_expr, p, coeffs, key_prefix):
-    p = int(p)
-    st.warning("No exact identity path was found within the selected limits. The path below explains the coefficient extraction that produced the truncated result.")
-    st.markdown('<div class="derivation-step"><strong>Step A — Expand.</strong><br>Compute the q-series coefficients to the selected precision.</div>', unsafe_allow_html=True)
-    st.latex(rf"F(q)={input_expr.to_latex()}=\sum_{{n\ge0}}a(n)q^n")
-    st.markdown('<div class="derivation-step"><strong>Step B — Sort by residue.</strong><br>Place a(n) into the component determined by n modulo p.</div>', unsafe_allow_html=True)
-    for r in range(p):
-        st.latex(truncated_component_latex(coeffs[r::p], p, r))
-    st.markdown('<div class="derivation-step"><strong>Step C — Reconstruct.</strong><br>Use F(q)=Σ qʳFᵣ(qᵖ) up to the computed precision.</div>', unsafe_allow_html=True)
-    st.info("This route uses coefficient comparison only; it does not claim an exact closed-form proof.")
-    code = coefficient_derivation_latex(input_expr, p, coeffs)
-    render_latex_export(
-        "Coefficient-path LaTeX",
-        code,
-        key=f"{key_prefix}_coefficient_path",
-        filename=f"{safe_widget_key(key_prefix).lower()}_coefficient_path.tex",
-    )
-    return code
-
-
-def parse_eta_linear_combination(latex_input):
-    """Parse finite sums/differences of eta monomials into SymExpr."""
-    obj = restricted_eval(latex_to_python(latex_input), get_sym_env())
-    if isinstance(obj, SymTerm):
-        obj = SymExpr([obj])
-    elif isinstance(obj, (int, Fraction)):
-        obj = SymExpr([SymTerm(obj)])
-    if not isinstance(obj, SymExpr):
-        raise ValueError("Enter a finite sum or difference of eta products/quotients.")
-    if any(term.q_power < 0 for term in obj.terms):
-        raise ValueError("Negative explicit powers of q are not supported.")
-    return obj
-
-
-def compare_symbolic_series(lhs, rhs, limit):
-    left = symexpr_to_qseries(lhs, limit).coeffs
-    right = symexpr_to_qseries(rhs, limit).coeffs
-    mismatch = next((n for n, (a, b) in enumerate(zip(left, right)) if a != b), None)
-    return mismatch
-
-
-def dissect_symbolic_expression_once(expr, p, db, max_scale=30, max_power=8,
-                                      max_terms=1500, verify_terms=100):
-    """Dissect every eta monomial of a finite linear combination and recombine exactly."""
-    total = SymExpr([SymTerm(0)])
-    certificate = []
-    for term_number, term in enumerate(expr.terms, 1):
-        bad_specials = [(name, k) for (name, k) in term.specials if k % p]
-        if bad_specials:
-            return {
-                "success": False,
-                "reason": f"Term {term_number} contains a special factor not visibly depending on q^{p}: {bad_specials}.",
-            }
-        plans = find_dissection_plans(
-            term.etas, p, db, int(max_scale), int(max_power), int(max_terms), 8
-        )
-        if not plans:
-            return {
-                "success": False,
-                "reason": f"No verified {p}-dissection plan was found for term {term_number}: {SymExpr([term]).to_latex()}.",
-            }
-
-        accepted = None
-        accepted_plan = None
-        for plan in plans:
-            try:
-                expanded, _ = build_dissection_expression(plan)
-                prefactor = SymExpr([SymTerm(term.coeff, term.q_power, {}, term.specials)])
-                candidate = prefactor * expanded
-                if candidate.term_count > max_terms:
-                    continue
-                if compare_symbolic_series(SymExpr([term]), candidate, int(verify_terms)) is None:
-                    accepted = candidate
-                    accepted_plan = plan
-                    break
-            except Exception:
-                continue
-        if accepted is None:
-            return {
-                "success": False,
-                "reason": f"Candidate plans for term {term_number} failed the independent coefficient audit.",
-            }
-        total = total + accepted
-        if total.term_count > max_terms:
-            return {
-                "success": False,
-                "reason": f"The exact expression exceeded the selected limit of {max_terms} symbolic terms.",
-            }
-        certificate.append({"term": term, "plan": accepted_plan, "result": accepted})
-
-    mismatch = compare_symbolic_series(expr, total, int(verify_terms))
-    if mismatch is not None:
-        return {"success": False, "reason": f"Whole-expression verification failed first at q^{mismatch}."}
-    try:
-        components = total.components(int(p))
-    except Exception as exc:
-        return {"success": False, "reason": f"The assembled result is not visibly separated by residues: {exc}"}
-    return {
-        "success": True,
-        "expression": total,
-        "components": components,
-        "certificate": certificate,
-        "verified_through": int(verify_terms),
-    }
-
-
-def q_log_product_exponents(coeffs, fit_limit):
-    """Return e_n in F(q)=prod_{n>=1}(1-q^n)^{e_n}, using exact arithmetic."""
-    fit_limit = min(int(fit_limit), len(coeffs) - 1)
-    series = QSeries(coeffs[: fit_limit + 1], fit_limit)
-    if series.coeffs[0] != 1:
-        raise ValueError("The normalized series must have constant term 1.")
-    q_derivative = QSeries([n * series.coeffs[n] for n in range(fit_limit + 1)], fit_limit)
-    log_derivative = q_derivative * series.inv()
-    product_exponents = [Fraction(0)] * (fit_limit + 1)
-    for n in range(1, fit_limit + 1):
-        weighted_previous = sum(
-            d * product_exponents[d]
-            for d in get_divisors(n)
-            if d < n
-        )
-        product_exponents[n] = (-log_derivative.coeffs[n] - weighted_previous) / n
-    return product_exponents
-
-
-def recognize_f_product(component_coeffs, fit_limit=80, min_tail=12):
-    """Find a finite f-product candidate by exact Euler-exponent inversion and verify it."""
-    exact = [c if isinstance(c, Fraction) else Fraction(c) for c in component_coeffs]
-    first = next((n for n, c in enumerate(exact) if c), None)
-    if first is None:
-        return {"success": True, "zero": True, "latex": "0", "verified_through": len(exact) - 1}
-    leading = exact[first]
-    normalized = [c / leading for c in exact[first:]]
-    available = len(normalized) - 1
-    if available < 12:
-        return {"success": False, "reason": "Too few coefficients for product recognition."}
-    fit_limit = min(int(fit_limit), available)
-    try:
-        cyclotomic = q_log_product_exponents(normalized, fit_limit)
-    except Exception as exc:
-        return {"success": False, "reason": str(exc)}
-    if any(x.denominator != 1 for x in cyclotomic[1:]):
-        return {"success": False, "reason": "Euler exponents are not integral."}
-
-    f_exponents = [Fraction(0)] * (fit_limit + 1)
-    for n in range(1, fit_limit + 1):
-        f_exponents[n] = cyclotomic[n] - sum(
-            f_exponents[d] for d in get_divisors(n) if d < n
-        )
-    if any(x.denominator != 1 for x in f_exponents[1:]):
-        return {"success": False, "reason": "The inferred f-product exponents are not integral."}
-    nonzero = [n for n in range(1, fit_limit + 1) if f_exponents[n]]
-    last = max(nonzero, default=0)
-    if last and fit_limit - last < min(int(min_tail), max(5, fit_limit // 5)):
-        return {"success": False, "reason": "No stable zero tail in the inferred f-product exponents."}
-    eta_map = {n: int(f_exponents[n]) for n in nonzero}
-    candidate = SymExpr([SymTerm(leading, first, eta_map)])
-    verification_limit = len(exact) - 1
-    candidate_coeffs = symexpr_to_qseries(candidate, verification_limit).coeffs
-    mismatch = next((n for n, (a, b) in enumerate(zip(candidate_coeffs, exact)) if a != b), None)
-    if mismatch is not None:
-        return {"success": False, "reason": f"Candidate fails at q^{mismatch}."}
-    latex = candidate.to_latex()
-    return {
-        "success": True,
-        "zero": False,
-        "latex": latex,
-        "expression": candidate,
-        "f_exponents": eta_map,
-        "verified_through": verification_limit,
-        "leading_shift": first,
-    }
-
-
-def base_p_digits(residue, p, depth):
-    digits = []
-    value = int(residue)
-    for _ in range(int(depth)):
-        digits.append(value % int(p))
-        value //= int(p)
-    return digits
-
-
-def progression_chain_latex(p, residue, depth):
-    digits = base_p_digits(residue, p, depth)
-    modulus, current = 1, 0
-    labels = []
-    for digit in digits:
-        current += modulus * digit
-        modulus *= p
-        labels.append(rf"a({modulus}n+{current})")
-    return r"\longrightarrow ".join(labels)
-
-
-def deep_exact_extraction(expr, p, residue, depth, db, max_scale, max_power,
-                          max_terms, verify_terms):
-    current = expr
-    records = []
-    for level, digit in enumerate(base_p_digits(residue, p, depth), 1):
-        dissected = dissect_symbolic_expression_once(
-            current, p, db, max_scale, max_power, max_terms, verify_terms
-        )
-        if not dissected.get("success"):
-            return {
-                "success": False,
-                "level": level,
-                "reason": dissected.get("reason", "Unknown failure."),
-                "records": records,
-            }
-        current = dissected["components"][digit]
-        if current.term_count > max_terms:
-            return {
-                "success": False,
-                "level": level,
-                "reason": "The extracted expression became too large.",
-                "records": records,
-            }
-        records.append({"level": level, "digit": digit, "expression": current, "dissection": dissected})
-    return {"success": True, "expression": current, "records": records}
-
-
-def truncated_component_latex(coeffs, modulus, residue, max_display=18):
-    rhs = format_truncated_component(coeffs, max_display=max_display)
-    return rf"\sum_{{n\ge0}}a({modulus}n+{residue})q^n={rhs}+O(q^{{{len(coeffs)}}})"
-
-
 def run_dissection_dictionary():
-    st.title("📚 Verified Dissection Library & LaTeX Vault")
-    st.markdown(
-        "Every stored identity is coefficient-audited before use. Each identity and the complete library "
-        "can now be copied or downloaded directly as LaTeX."
-    )
-    verification_limit = st.slider("Verification precision", 30, 180, 100, 10)
+    st.title("📚 Verified Dissection Library")
+    st.markdown("Every displayed identity is checked coefficient-by-coefficient at startup. Failed identities are excluded from automatic proofs.")
+    verification_limit = st.slider("Verification precision", 30, 160, 90, 10)
     db = verified_dissection_database(verification_limit)
-    verified_count = sum(bool(item.get("verified")) for item in db)
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Stored identities", len(db))
-    c2.metric("Passed audit", verified_count)
-    c3.metric("Supported dissections", "2, 3, 5")
-
-    p_filter = st.radio("Show", ["All", 2, 3, 5], horizontal=True)
-    shown = db if p_filter == "All" else [x for x in db if x["p"] == p_filter]
-    all_export = dissection_library_latex(shown)
-    with st.expander("Copy/export the complete displayed library", expanded=False):
-        render_latex_export(
-            "Complete verified dissection library",
-            all_export,
-            key=f"all_library_{p_filter}_{verification_limit}",
-            filename=f"verified_{p_filter}_dissections.tex",
-        )
-        st.download_button(
-            "Download complete standalone LaTeX document",
-            data=latex_document("Verified dissection identities", all_export),
-            file_name=f"verified_{p_filter}_dissections_document.tex",
-            mime="text/x-tex",
-            key=f"doc_library_{p_filter}_{verification_limit}",
-            use_container_width=True,
-        )
-
     status_df = pd.DataFrame([{
         "p": item["p"], "identity": item["name"], "verified through": item["limit"],
         "status": "verified" if item["verified"] else f"FAILED at {item.get('mismatch')}",
         "source": item["source"]
-    } for item in shown])
+    } for item in db])
     st.dataframe(status_df, use_container_width=True, hide_index=True)
-
-    for idx, item in enumerate(shown):
-        status_icon = "✅" if item["verified"] else "❌"
-        with st.expander(f"{status_icon} {item['p']}-dissection: {item['nice_name']}"):
-            identity = rf"{item['latex_lhs']}={item['latex_rhs']}"
-            st.latex(identity)
+    p_filter = st.radio("Dissection", ["All", 2, 3, 5], horizontal=True)
+    shown = db if p_filter == "All" else [x for x in db if x["p"] == p_filter]
+    for item in shown:
+        with st.expander(f"{item['p']}-dissection: {item['nice_name']} — {'✅' if item['verified'] else '❌'}"):
+            st.latex(rf"{item['latex_lhs']}={item['latex_rhs']}")
             st.caption(item["source"])
-            render_latex_export(
-                f"LaTeX for {item['nice_name']}",
-                identity,
-                key=f"identity_{p_filter}_{idx}_{verification_limit}",
-                filename=f"{safe_widget_key(item['name']).lower()}_{item['p']}_dissection.tex",
-            )
 
 
 def run_auto_dissection():
     st.title("🧩 Automatic p-Dissection Solver")
     st.markdown(
-        "Enter either a single eta product/quotient or a finite sum or difference of eta monomials. "
-        "The solver dissects each term with the verified identity library, recombines the result, "
-        "checks coefficients independently, and explains every identity substitution in readable and LaTeX form."
+        "Enter an eta product. The solver first looks for an exact finite dissection using only "
+        "coefficient-verified identities. If no closed form can be assembled, it returns a clearly "
+        "labelled truncated coefficient dissection instead."
     )
     with st.sidebar:
-        st.header("Dissection input")
-        latex_input = st.text_area(
-            "F(q)",
-            value=r"\frac{f_1^2}{f_2}-\frac{f_1^6}{f_2^3}",
-            height=100,
-            key="auto_dissection_input",
-        )
+        st.header("Input")
+        latex_input = st.text_area("F(q)", value=r"\frac{f_8}{f_1f_3f_4}", height=90, key="auto_dissection_input")
         st.latex(latex_input)
-        p_value = st.selectbox("p-dissection", [2, 3, 5], index=1, key="auto_p")
-        verify_terms = st.number_input("Verification terms", min_value=40, value=140, step=10, key="auto_verify")
-        max_scale = st.number_input("Maximum identity scale", min_value=1, value=30, step=1, key="auto_scale")
-        max_power = st.number_input("Maximum identity repetitions", min_value=1, value=8, step=1, key="auto_power")
-        max_symbolic_terms = st.number_input("Maximum symbolic branches", min_value=20, value=1800, step=50, key="auto_branches")
-        run_btn = st.button("Find p-dissection", type="primary", use_container_width=True, key="auto_run")
+        p_value = st.selectbox("p-dissection", [2, 3, 5], index=0)
+        verify_terms = st.number_input("Numerical verification terms", min_value=30, value=120, step=10)
+        max_scale = st.number_input("Maximum identity scale", min_value=1, value=30, step=1)
+        max_power = st.number_input("Maximum repetitions per identity", min_value=1, value=8, step=1)
+        max_symbolic_terms = st.number_input("Maximum symbolic branches", min_value=20, value=1500, step=50)
+        run_btn = st.button("Find p-dissection", type="primary", use_container_width=True)
     if not run_btn:
-        st.info("This solver now accepts sums and differences directly; use the Composite Lab for deeper progressions such as a(8n+7).")
         return
-
     try:
-        input_expr = parse_eta_linear_combination(latex_input)
-        db = verified_dissection_database(min(110, int(verify_terms)))
-        exact = dissect_symbolic_expression_once(
-            input_expr,
-            int(p_value),
-            db,
-            int(max_scale),
-            int(max_power),
-            int(max_symbolic_terms),
-            int(verify_terms),
-        )
-
-        tabs = st.tabs(["Exact symbolic result", "Residue extraction", "Coefficient fallback", "Step-by-step derivation"])
-        exact_success = bool(exact.get("success"))
-        exact_expr = exact.get("expression")
-        exact_components = exact.get("components")
-
-        with tabs[0]:
-            if exact_success:
-                st.success(
-                    f"Exact term-by-term {p_value}-dissection assembled and independently checked through q^{verify_terms}."
-                )
-                st.latex(rf"F(q)={exact_expr.to_latex()}")
-                full_code = rf"F(q)&={exact_expr.to_latex()}"
-                render_latex_export(
-                    "Exact dissection LaTeX",
-                    "\\begin{aligned}\n" + full_code + "\n\\end{aligned}",
-                    key=f"auto_exact_{hashlib.md5(latex_input.encode()).hexdigest()}_{p_value}",
-                    filename=f"exact_{p_value}_dissection.tex",
-                )
-            else:
-                st.warning("No exact finite closed form could be assembled within the selected identity and branch limits.")
-                st.code(exact.get("reason", "No reason returned."))
+        target = parse_eta_product(latex_input)
+        db = verified_dissection_database(min(100, int(verify_terms)))
+        failed = [x["name"] for x in db if not x["verified"]]
+        if failed:
+            st.warning("Some database identities failed verification and were disabled: " + ", ".join(failed))
+        plans = find_dissection_plans(target, int(p_value), db, int(max_scale), int(max_power), int(max_symbolic_terms), 5)
+        tabs = st.tabs(["Exact symbolic result", "Coefficient dissection", "Method certificate"])
+        exact_success = False
+        if plans:
+            for plan_number, plan in enumerate(plans, 1):
+                try:
+                    expr, lhs_parts = build_dissection_expression(plan)
+                    if expr.term_count > max_symbolic_terms:
+                        continue
+                    components = expr.components(int(p_value))
+                    lhs_series = QSeries(_core_expansion_engine(latex_input, int(verify_terms)), int(verify_terms))
+                    rhs_series = symexpr_to_qseries(expr, int(verify_terms))
+                    mismatch = next((n for n, (a, b) in enumerate(zip(lhs_series.coeffs, rhs_series.coeffs)) if a != b), None)
+                    if mismatch is not None:
+                        continue
+                    exact_success = True
+                    with tabs[0]:
+                        st.success(f"Exact finite {p_value}-dissection assembled from verified identities; an independent coefficient audit also agrees through q^{verify_terms}.")
+                        st.latex(rf"F(q)={expr.to_latex()}")
+                        st.markdown("#### Normalized components")
+                        component_lines = []
+                        for r, component in components.items():
+                            st.latex(rf"F_{{{r}}}(q)=\sum_{{n\ge0}}a({p_value}n+{r})q^n={component.to_latex()}")
+                            component_lines.append(rf"F_{{{r}}}(q)&={component.to_latex()}")
+                        add_to_clipboard(f"Exact {p_value}-dissection", "\\begin{aligned}\n" + " \\\\\n".join(component_lines) + "\n\\end{aligned}")
+                    with tabs[2]:
+                        st.write("The solver used:")
+                        for candidate, count in plan["factors"]:
+                            st.latex(rf"\left({scale_latex_lhs(candidate['item']['latex_lhs'], candidate['scale'])}\right)^{{{count}}}")
+                            st.caption(candidate["item"]["source"])
+                        if plan["residual"]:
+                            st.write("Residual q^p-series factor:")
+                            st.latex(eta_product_latex(plan["residual"], "f"))
+                        st.write(f"Expanded symbolic branch count: {expr.term_count}. Numerical equality check: coefficients 0 through {verify_terms}.")
+                    break
+                except Exception:
+                    continue
+        if not exact_success:
+            with tabs[0]:
+                st.warning("No exact finite closed form could be assembled from the verified library within the selected branch limits.")
 
         coeffs = _core_expansion_engine(latex_input, int(verify_terms))
         with tabs[1]:
-            component_lines = []
-            for r in range(int(p_value)):
-                st.markdown(f"#### Extract coefficients of $q^{{{p_value}n+{r}}}$")
-                if exact_success:
-                    rhs = exact_components[r].to_latex()
-                    equation = component_equation_latex(int(p_value), r, rhs)
-                    if rhs == "0":
-                        st.success(f"The component a({p_value}n+{r}) vanishes identically in the exact symbolic result.")
-                else:
-                    component = coeffs[r::int(p_value)]
-                    equation = truncated_component_latex(component, int(p_value), r)
-                st.latex(equation)
-                component_lines.append(equation)
-                render_latex_export(
-                    f"Component a({p_value}n+{r})",
-                    equation,
-                    key=f"auto_component_{p_value}_{r}_{hashlib.md5(latex_input.encode()).hexdigest()}",
-                    filename=f"component_{p_value}n_plus_{r}.tex",
-                )
-            if component_lines:
-                render_latex_export(
-                    "All residue components",
-                    "\\begin{aligned}\n" + " \\\\\n".join(line.replace("=", "&=", 1) for line in component_lines) + "\n\\end{aligned}",
-                    key=f"auto_all_components_{p_value}_{hashlib.md5(latex_input.encode()).hexdigest()}",
-                    filename=f"all_{p_value}_components.tex",
-                )
-            st.info(r"Extraction rule: retain powers q^{pn+r}, divide by q^r, and replace q^p by q.")
-
-        with tabs[2]:
-            st.info("These are coefficient truncations. They remain available even when the identity library cannot produce a closed form.")
+            st.info("This section is a truncated coefficient dissection, not a closed-form identity proof.")
             rows = []
-            fallback_lines = []
             for r in range(int(p_value)):
                 component = coeffs[r::int(p_value)]
-                equation = truncated_component_latex(component, int(p_value), r)
-                st.latex(equation)
-                fallback_lines.append(equation)
-                rows.append({"r": r, "first coefficients": ", ".join(str(x) for x in component[:14])})
+                st.latex(rf"F_{{{r}}}(q)={format_truncated_component(component)}+O(q^{{{len(component)}}})")
+                rows.append({"r": r, "first coefficients": ", ".join(str(x) for x in component[:12])})
             st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-            render_latex_export(
-                "Truncated coefficient dissection",
-                "\\begin{aligned}\n" + " \\\\\n".join(line.replace("=", "&=", 1) for line in fallback_lines) + "\n\\end{aligned}",
-                key=f"auto_fallback_{p_value}_{hashlib.md5(latex_input.encode()).hexdigest()}",
-                filename=f"truncated_{p_value}_dissection.tex",
-            )
-
-        with tabs[3]:
-            if not exact_success:
-                render_coefficient_derivation_path(
-                    input_expr,
-                    int(p_value),
-                    coeffs,
-                    key_prefix=f"auto_{p_value}_{hashlib.md5(latex_input.encode()).hexdigest()}",
-                )
-            else:
-                render_exact_derivation_path(
-                    input_expr,
-                    exact,
-                    int(p_value),
-                    key_prefix=f"auto_{p_value}_{hashlib.md5(latex_input.encode()).hexdigest()}",
-                    show_export=True,
-                )
     except Exception as exc:
         st.error(f"Dissection analysis failed: {exc}")
-
-def run_composite_dissection_lab():
-    st.title("🧪 Composite 2/3-Dissection & Residue Laboratory")
-    st.markdown(
-        "This module accepts finite sums and differences of eta products. It first performs exact term-by-term "
-        "dissection, then compares coefficients, recognizes simple f-products, and supports iterated extractions "
-        "such as a(2n+1), a(4n+3), a(8n+7), or a(3^j n+r)."
-    )
-    with st.sidebar:
-        st.header("Composite expression")
-        latex_input = st.text_area(
-            "F(q)=Σ a(n)qⁿ",
-            value=r"\frac{f_1^2}{f_2}-\frac{f_1^6}{f_2^3}",
-            height=110,
-            key="composite_input",
-        )
-        st.latex(latex_input)
-        p_value = st.selectbox("Dissection base", [2, 3], index=1, key="composite_p")
-        verify_terms = st.number_input("Coefficient audit terms", min_value=50, value=180, step=10, key="composite_verify")
-        max_scale = st.number_input("Maximum identity scale", min_value=1, value=30, step=1, key="composite_scale")
-        max_power = st.number_input("Maximum repetitions", min_value=1, value=10, step=1, key="composite_power")
-        max_terms = st.number_input("Maximum symbolic terms", min_value=30, value=2500, step=50, key="composite_terms")
-        max_depth_allowed = 4 if int(p_value) == 2 else 3
-        default_depth = 3 if int(p_value) == 2 else 2
-        depth = st.number_input("Deep extraction depth", min_value=1, max_value=max_depth_allowed, value=default_depth, step=1, key="composite_depth")
-        modulus = int(p_value) ** int(depth)
-        default_residue = modulus - 1
-        residue = st.number_input("Target residue r", min_value=0, max_value=modulus - 1, value=default_residue, step=1, key="composite_residue")
-        run_btn = st.button("Run composite laboratory", type="primary", use_container_width=True, key="composite_run")
-    if not run_btn:
-        st.info("The default example is a difference of two eta quotients. Choose base 3 to obtain a compact exact dissection.")
-        return
-
-    try:
-        input_expr = parse_eta_linear_combination(latex_input)
-        db = verified_dissection_database(min(110, int(verify_terms)))
-        exact = dissect_symbolic_expression_once(
-            input_expr, int(p_value), db, int(max_scale), int(max_power), int(max_terms), int(verify_terms)
-        )
-        coeffs = _core_expansion_engine(latex_input, int(verify_terms))
-        tabs = st.tabs([
-            "Exact composite dissection",
-            "Residue components",
-            "Deep progression extraction",
-            "Coefficient/product recognition",
-            "Step-by-step derivation",
-            "LaTeX report",
-        ])
-        export_sections = []
-
-        with tabs[0]:
-            if exact.get("success"):
-                expression = exact["expression"]
-                st.success(
-                    f"Exact term-by-term {p_value}-dissection found; full coefficient comparison agrees through q^{verify_terms}."
-                )
-                st.latex(rf"F(q)={expression.to_latex()}")
-                code = "\\begin{aligned}\n" + rf"F(q)&={expression.to_latex()}" + "\n\\end{aligned}"
-                export_sections.append(("Exact composite dissection", code))
-                render_latex_export(
-                    "Exact composite dissection",
-                    code,
-                    key=f"composite_exact_{p_value}_{hashlib.md5(latex_input.encode()).hexdigest()}",
-                    filename=f"composite_exact_{p_value}_dissection.tex",
-                )
-                st.info("Open the Step-by-step derivation tab to see every identity, scaling, substitution, recombination, and extraction rule.")
-                derivation_code = exact_derivation_latex(input_expr, exact, int(p_value))
-                export_sections.append(("Step-by-step exact derivation", derivation_code))
-            else:
-                st.warning("Exact symbolic assembly was not available.")
-                st.code(exact.get("reason", "No reason returned."))
-                st.info("The coefficient and product-recognition tabs still provide useful finite-data output.")
-
-        with tabs[1]:
-            component_export = []
-            cards = st.columns(int(p_value))
-            for r in range(int(p_value)):
-                with cards[r]:
-                    st.metric("Residue", f"{p_value}n+{r}")
-                if exact.get("success"):
-                    rhs = exact["components"][r].to_latex()
-                    equation = component_equation_latex(int(p_value), r, rhs)
-                    complexity = exact["components"][r].term_count
-                    st.latex(equation)
-                    if rhs == "0":
-                        st.success(f"The extraction a({p_value}n+{r}) vanishes identically in the exact symbolic result.")
-                    elif complexity <= 4:
-                        st.success(f"Simple exact component: {complexity} symbolic term(s).")
-                    else:
-                        st.caption(f"Exact component with {complexity} symbolic terms.")
-                else:
-                    component = coeffs[r::int(p_value)]
-                    equation = truncated_component_latex(component, int(p_value), r)
-                    st.latex(equation)
-                component_export.append(equation)
-                render_latex_export(
-                    f"Extracted component a({p_value}n+{r})",
-                    equation,
-                    key=f"composite_component_{p_value}_{r}_{hashlib.md5(latex_input.encode()).hexdigest()}",
-                    filename=f"a_{p_value}n_plus_{r}.tex",
-                )
-            all_components = "\\begin{aligned}\n" + " \\\\\n".join(
-                line.replace("=", "&=", 1) for line in component_export
-            ) + "\n\\end{aligned}"
-            export_sections.append(("Residue components", all_components))
-            st.info(r"To extract a(pn+r): retain q^{pn+r}, divide by q^r, and replace q^p by q.")
-
-        with tabs[2]:
-            modulus = int(p_value) ** int(depth)
-            residue = int(residue)
-            st.markdown(f"### Target progression: $a({modulus}n+{residue})$")
-            st.latex(progression_chain_latex(int(p_value), residue, int(depth)))
-            deep = deep_exact_extraction(
-                input_expr, int(p_value), residue, int(depth), db,
-                int(max_scale), int(max_power), int(max_terms), int(verify_terms)
-            )
-            direct_component = coeffs[residue::modulus]
-            deep_equation = None
-            if deep.get("success"):
-                rhs = deep["expression"].to_latex()
-                deep_equation = rf"\sum_{{n\ge0}}a({modulus}n+{residue})q^n={rhs}"
-                # Compare against the direct coefficient extraction in its own q variable.
-                direct_limit = len(direct_component) - 1
-                symbolic_coeffs = symexpr_to_qseries(deep["expression"], direct_limit).coeffs
-                mismatch = next((n for n, (a, b) in enumerate(zip(symbolic_coeffs, direct_component)) if a != b), None)
-                if mismatch is None:
-                    st.success("Exact iterated extraction succeeded and agrees with direct coefficient extraction.")
-                    st.latex(deep_equation)
-                    if deep["expression"].term_count <= 5:
-                        st.success(f"The resulting form is simple: {deep['expression'].term_count} symbolic term(s).")
-                    export_sections.append((f"Deep extraction a({modulus}n+{residue})", deep_equation))
-                    render_latex_export(
-                        f"Exact deep extraction a({modulus}n+{residue})",
-                        deep_equation,
-                        key=f"deep_exact_{modulus}_{residue}_{hashlib.md5(latex_input.encode()).hexdigest()}",
-                        filename=f"a_{modulus}n_plus_{residue}.tex",
-                    )
-                    deep_path_code = deep_derivation_latex(input_expr, int(p_value), residue, deep)
-                    export_sections.append((f"Step-by-step path to a({modulus}n+{residue})", deep_path_code))
-                    st.markdown("#### Path used for the iterated extraction")
-                    render_deep_derivation_path(
-                        input_expr,
-                        int(p_value),
-                        residue,
-                        deep,
-                        key_prefix=f"deep_{modulus}_{residue}_{hashlib.md5(latex_input.encode()).hexdigest()}",
-                    )
-                else:
-                    st.warning(f"The symbolic deep result failed direct comparison at coefficient q^{mismatch}; it has been suppressed.")
-                    deep_equation = None
-            else:
-                st.warning(f"Exact iteration stopped at level {deep.get('level', '?')}: {deep.get('reason', 'unknown reason')}")
-
-            if deep_equation is None:
-                fallback = truncated_component_latex(direct_component, modulus, residue)
-                st.latex(fallback)
-                st.caption("Finite coefficient extraction only; this is not an identity proof.")
-                export_sections.append((f"Truncated a({modulus}n+{residue})", fallback))
-                render_latex_export(
-                    f"Truncated extraction a({modulus}n+{residue})",
-                    fallback,
-                    key=f"deep_truncated_{modulus}_{residue}_{hashlib.md5(latex_input.encode()).hexdigest()}",
-                    filename=f"truncated_a_{modulus}n_plus_{residue}.tex",
-                )
-
-            recognition = recognize_f_product(direct_component, fit_limit=min(90, len(direct_component)-1))
-            if recognition.get("success"):
-                if recognition.get("zero"):
-                    st.success(f"All computed coefficients in a({modulus}n+{residue}) are zero through the available range.")
-                else:
-                    candidate = rf"\sum_{{n\ge0}}a({modulus}n+{residue})q^n\overset{{?}}{{=}}{recognition['latex']}"
-                    st.markdown("#### Coefficient-recognized simple product candidate")
-                    st.latex(candidate)
-                    st.caption(
-                        f"The candidate agrees through q^{recognition['verified_through']}; a separate proof is still required unless it matches the exact symbolic result above."
-                    )
-
-        with tabs[3]:
-            st.markdown("### Automatic coefficient comparison across residue classes")
-            st.caption(
-                "The recognizer converts each extracted series into Euler product exponents and Möbius-inverts them to search for a finite f-product. Matches are computational candidates unless supported by the exact tab."
-            )
-            rows = []
-            recognized_lines = []
-            max_scan_depth = min(int(depth), 3)
-            for level in range(1, max_scan_depth + 1):
-                mod = int(p_value) ** level
-                for r in range(mod):
-                    component = coeffs[r::mod]
-                    rec = recognize_f_product(component, fit_limit=min(80, len(component)-1))
-                    if rec.get("success"):
-                        if rec.get("zero"):
-                            kind, form = "zero in computed range", "0"
-                        else:
-                            kind, form = "finite f-product candidate", rec["latex"]
-                            recognized_lines.append(
-                                rf"\sum_{{n\ge0}}a({mod}n+{r})q^n&\overset{{?}}{{=}}{form}"
-                            )
-                        rows.append({
-                            "progression": f"a({mod}n+{r})",
-                            "classification": kind,
-                            "recognized form": form,
-                            "checked coefficients": len(component),
-                        })
-                    else:
-                        nonzero_first = sum(1 for c in component[:20] if c)
-                        if nonzero_first <= 3:
-                            rows.append({
-                                "progression": f"a({mod}n+{r})",
-                                "classification": "sparse first 20 terms",
-                                "recognized form": "—",
-                                "checked coefficients": len(component),
-                            })
-            if rows:
-                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-            else:
-                st.info("No especially simple or sparse progression was detected within the selected range.")
-            if recognized_lines:
-                recognized_code = "\\begin{aligned}\n" + " \\\\\n".join(recognized_lines) + "\n\\end{aligned}"
-                export_sections.append(("Coefficient-recognized product candidates", recognized_code))
-                render_latex_export(
-                    "All recognized product candidates",
-                    recognized_code,
-                    key=f"recognized_all_{p_value}_{depth}_{hashlib.md5(latex_input.encode()).hexdigest()}",
-                    filename="recognized_dissection_candidates.tex",
-                )
-
-        with tabs[4]:
-            if exact.get("success"):
-                path_code = render_exact_derivation_path(
-                    input_expr,
-                    exact,
-                    int(p_value),
-                    key_prefix=f"composite_{p_value}_{hashlib.md5(latex_input.encode()).hexdigest()}",
-                    show_export=True,
-                )
-                if path_code and not any(title == "Step-by-step exact derivation" for title, _ in export_sections):
-                    export_sections.append(("Step-by-step exact derivation", path_code))
-            else:
-                fallback_path = render_coefficient_derivation_path(
-                    input_expr,
-                    int(p_value),
-                    coeffs,
-                    key_prefix=f"composite_{p_value}_{hashlib.md5(latex_input.encode()).hexdigest()}",
-                )
-                export_sections.append(("Coefficient-based dissection path", fallback_path))
-
-        with tabs[5]:
-            if not export_sections:
-                st.info("No exportable result was produced.")
-            else:
-                report_body = "\n\n".join(
-                    f"% --- {title} ---\n{code}" for title, code in export_sections
-                )
-                render_latex_export(
-                    "Complete analysis LaTeX",
-                    report_body,
-                    key=f"composite_report_{p_value}_{hashlib.md5(latex_input.encode()).hexdigest()}",
-                    filename="composite_dissection_report.tex",
-                )
-                st.download_button(
-                    "Download standalone LaTeX report",
-                    data=latex_document("Composite dissection analysis", report_body),
-                    file_name="composite_dissection_report_standalone.tex",
-                    mime="text/x-tex",
-                    key=f"composite_standalone_{p_value}_{hashlib.md5(latex_input.encode()).hexdigest()}",
-                    use_container_width=True,
-                )
-    except Exception as exc:
-        st.error(f"Composite dissection analysis failed: {exc}")
 
 
 # Backward-compatible strategist now delegates to the exact solver.
@@ -2810,8 +1776,7 @@ app_mode = st.sidebar.selectbox("Select Application Module:", [
     "🌀 Euler Product Explorer",
     "🛡️ Correct Eta-Multiplier Lab", 
     "📚 Verified Dissection Library",
-    "🧩 Automatic p-Dissection Solver",
-    "🧪 Composite & Residue Dissection Lab"
+    "🧩 Automatic p-Dissection Solver"
 ])
 
 # --- GLOBAL CLIPBOARD & CACHE UI ---
@@ -2856,4 +1821,3 @@ elif app_mode == "🌀 Euler Product Explorer": run_euler_explorer()
 elif app_mode == "🛡️ Correct Eta-Multiplier Lab": run_eta_multiplier()
 elif app_mode == "📚 Verified Dissection Library": run_dissection_dictionary()
 elif app_mode == "🧩 Automatic p-Dissection Solver": run_auto_dissection()
-elif app_mode == "🧪 Composite & Residue Dissection Lab": run_composite_dissection_lab()
