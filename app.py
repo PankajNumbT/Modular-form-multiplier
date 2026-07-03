@@ -761,6 +761,24 @@ class EtaDictTerm:
             raise ValueError("Eta-product exponents must be integers.")
         return EtaDictTerm({d: e*power for d, e in self.terms.items()}, self.scalar**power)
 
+    @staticmethod
+    def _reject_additive_input():
+        raise ValueError(
+            "This eta-multiplier field accepts one product/quotient only. "
+            "For sums or differences, use the Automatic p-Dissection Solver or the Composite Dissection Lab."
+        )
+
+    def __add__(self, other):
+        self._reject_additive_input()
+
+    __radd__ = __add__
+
+    def __sub__(self, other):
+        self._reject_additive_input()
+
+    def __rsub__(self, other):
+        self._reject_additive_input()
+
 
 def parse_eta_product(latex_input):
     def f_dict(n):
@@ -2018,49 +2036,54 @@ def run_dissection_dictionary():
 
 
 def run_auto_dissection():
-    st.title("🧩 Automatic Eta-Product p-Dissection Solver")
+    st.title("🧩 Automatic p-Dissection Solver")
     st.markdown(
-        "For a single eta product or quotient, the solver constructs an exact finite dissection from "
-        "verified identities whenever possible, and always supplies copyable coefficient components."
+        "Enter either a single eta product/quotient or a finite sum or difference of eta monomials. "
+        "The solver dissects each term with the verified identity library, recombines the result, "
+        "checks coefficients independently, and exports every residue component as LaTeX."
     )
     with st.sidebar:
         st.header("Dissection input")
-        latex_input = st.text_area("F(q)", value=r"\frac{f_8}{f_1f_3f_4}", height=90, key="auto_dissection_input")
+        latex_input = st.text_area(
+            "F(q)",
+            value=r"\frac{f_1^2}{f_2}-\frac{f_1^6}{f_2^3}",
+            height=100,
+            key="auto_dissection_input",
+        )
         st.latex(latex_input)
-        p_value = st.selectbox("p-dissection", [2, 3, 5], index=0, key="auto_p")
+        p_value = st.selectbox("p-dissection", [2, 3, 5], index=1, key="auto_p")
         verify_terms = st.number_input("Verification terms", min_value=40, value=140, step=10, key="auto_verify")
         max_scale = st.number_input("Maximum identity scale", min_value=1, value=30, step=1, key="auto_scale")
         max_power = st.number_input("Maximum identity repetitions", min_value=1, value=8, step=1, key="auto_power")
         max_symbolic_terms = st.number_input("Maximum symbolic branches", min_value=20, value=1800, step=50, key="auto_branches")
         run_btn = st.button("Find p-dissection", type="primary", use_container_width=True, key="auto_run")
     if not run_btn:
+        st.info("This solver now accepts sums and differences directly; use the Composite Lab for deeper progressions such as a(8n+7).")
         return
+
     try:
-        target = parse_eta_product(latex_input)
         input_expr = parse_eta_linear_combination(latex_input)
         db = verified_dissection_database(min(110, int(verify_terms)))
-        plans = find_dissection_plans(target, int(p_value), db, int(max_scale), int(max_power), int(max_symbolic_terms), 8)
+        exact = dissect_symbolic_expression_once(
+            input_expr,
+            int(p_value),
+            db,
+            int(max_scale),
+            int(max_power),
+            int(max_symbolic_terms),
+            int(verify_terms),
+        )
+
         tabs = st.tabs(["Exact symbolic result", "Residue extraction", "Coefficient fallback", "Certificate"])
-        exact_success = False
-        exact_expr = None
-        exact_components = None
-        selected_plan = None
-        for plan in plans:
-            try:
-                expr, _ = build_dissection_expression(plan)
-                if expr.term_count > max_symbolic_terms:
-                    continue
-                if compare_symbolic_series(input_expr, expr, int(verify_terms)) is not None:
-                    continue
-                exact_components = expr.components(int(p_value))
-                exact_expr, selected_plan, exact_success = expr, plan, True
-                break
-            except Exception:
-                continue
+        exact_success = bool(exact.get("success"))
+        exact_expr = exact.get("expression")
+        exact_components = exact.get("components")
 
         with tabs[0]:
             if exact_success:
-                st.success(f"Exact {p_value}-dissection assembled and independently checked through q^{verify_terms}.")
+                st.success(
+                    f"Exact term-by-term {p_value}-dissection assembled and independently checked through q^{verify_terms}."
+                )
                 st.latex(rf"F(q)={exact_expr.to_latex()}")
                 full_code = rf"F(q)&={exact_expr.to_latex()}"
                 render_latex_export(
@@ -2071,6 +2094,7 @@ def run_auto_dissection():
                 )
             else:
                 st.warning("No exact finite closed form could be assembled within the selected identity and branch limits.")
+                st.code(exact.get("reason", "No reason returned."))
 
         coeffs = _core_expansion_engine(latex_input, int(verify_terms))
         with tabs[1]:
@@ -2080,19 +2104,19 @@ def run_auto_dissection():
                 if exact_success:
                     rhs = exact_components[r].to_latex()
                     equation = component_equation_latex(int(p_value), r, rhs)
-                    st.latex(equation)
-                    component_lines.append(equation)
-                    render_latex_export(
-                        f"Component a({p_value}n+{r})",
-                        equation,
-                        key=f"auto_component_{p_value}_{r}_{hashlib.md5(latex_input.encode()).hexdigest()}",
-                        filename=f"component_{p_value}n_plus_{r}.tex",
-                    )
+                    if rhs == "0":
+                        st.success(f"The component a({p_value}n+{r}) vanishes identically in the exact symbolic result.")
                 else:
                     component = coeffs[r::int(p_value)]
                     equation = truncated_component_latex(component, int(p_value), r)
-                    st.latex(equation)
-                    component_lines.append(equation)
+                st.latex(equation)
+                component_lines.append(equation)
+                render_latex_export(
+                    f"Component a({p_value}n+{r})",
+                    equation,
+                    key=f"auto_component_{p_value}_{r}_{hashlib.md5(latex_input.encode()).hexdigest()}",
+                    filename=f"component_{p_value}n_plus_{r}.tex",
+                )
             if component_lines:
                 render_latex_export(
                     "All residue components",
@@ -2124,20 +2148,25 @@ def run_auto_dissection():
             if not exact_success:
                 st.write("No exact certificate was produced.")
             else:
-                st.write("Verified identities used by the solver:")
+                st.write("Verified identities used term-by-term:")
                 cert_lines = []
-                for idx, (candidate, count) in enumerate(selected_plan["factors"], 1):
-                    scaled_lhs = scale_latex_lhs(candidate["item"]["latex_lhs"], candidate["scale"])
-                    line = rf"\left({scaled_lhs}\right)^{{{count}}}"
-                    st.latex(line)
-                    st.caption(candidate["item"]["source"])
-                    cert_lines.append(line)
-                if selected_plan["residual"]:
-                    residual = eta_product_latex(selected_plan["residual"], "f")
-                    st.write("Residual q^p-series factor:")
-                    st.latex(residual)
-                    cert_lines.append(rf"\text{{Residual factor: }}{residual}")
-                certificate_code = "% Exact dissection certificate\n" + "\n".join(cert_lines)
+                for term_idx, row in enumerate(exact["certificate"], 1):
+                    term_latex = SymExpr([row["term"]]).to_latex()
+                    st.markdown(f"**Input term {term_idx}:**")
+                    st.latex(term_latex)
+                    cert_lines.append(rf"% Input term {term_idx}: {term_latex}")
+                    for candidate, count in row["plan"]["factors"]:
+                        scaled_lhs = scale_latex_lhs(candidate["item"]["latex_lhs"], candidate["scale"])
+                        line = rf"\left({scaled_lhs}\right)^{{{count}}}"
+                        st.latex(line)
+                        st.caption(candidate["item"]["source"])
+                        cert_lines.append(line)
+                    if row["plan"].get("residual"):
+                        residual = eta_product_latex(row["plan"]["residual"], "f")
+                        st.write("Residual q^p-series factor:")
+                        st.latex(residual)
+                        cert_lines.append(rf"\text{{Residual factor: }}{residual}")
+                certificate_code = "% Exact term-by-term dissection certificate\n" + "\n".join(cert_lines)
                 render_latex_export(
                     "Method certificate LaTeX",
                     certificate_code,
@@ -2146,7 +2175,6 @@ def run_auto_dissection():
                 )
     except Exception as exc:
         st.error(f"Dissection analysis failed: {exc}")
-
 
 def run_composite_dissection_lab():
     st.title("🧪 Composite 2/3-Dissection & Residue Laboratory")
