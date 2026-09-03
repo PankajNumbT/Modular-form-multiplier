@@ -201,7 +201,7 @@ def gen_fab(a, b, limit):
         n += 1
     return QSeries(C, limit)
 
-def gen_Psi_ab(a, b, limit):
+def gen_Psi_ab(a, b, limit, sign_a=1, sign_b=1):
     C = [0] * (limit + 1)
     
     # Positive n (from 0 to infinity)
@@ -209,7 +209,8 @@ def gen_Psi_ab(a, b, limit):
     while True:
         exp_pos = a * (n * (n + 1) // 2) + b * (n * (n - 1) // 2)
         if exp_pos <= limit:
-            C[exp_pos] += 1
+            coeff = (sign_a ** (n * (n + 1) // 2)) * (sign_b ** (n * (n - 1) // 2))
+            C[exp_pos] += coeff
         elif n > 0: 
             break
         n += 1
@@ -219,7 +220,8 @@ def gen_Psi_ab(a, b, limit):
     while True:
         exp_neg = a * (n * (n + 1) // 2) + b * (n * (n - 1) // 2)
         if exp_neg <= limit:
-            C[exp_neg] -= 1
+            coeff = (sign_a ** (n * (n + 1) // 2)) * (sign_b ** (n * (n - 1) // 2))
+            C[exp_neg] -= coeff
         else:
             break
         n -= 1
@@ -290,10 +292,18 @@ def latex_to_python(latex_str):
     ]
     for pattern, name in function_patterns:
         s = re.sub(pattern, lambda m, nm=name: f"{nm}({m.group(1) or '1'})", s)
-    s = re.sub(r'\\Psi\s*\(\s*q\^?\{?([0-9X]*)\}?\s*,\s*q\^?\{?([0-9X]*)\}?\s*\)',
-               lambda m: f"Psi({m.group(1) or '1'},{m.group(2) or '1'})", s)
-    s = re.sub(r'\\Psi\s*\(\s*([0-9X]+)\s*,\s*([0-9X]+)\s*\)',
-               lambda m: f"Psi({m.group(1)},{m.group(2)})", s)
+        
+    def parse_psi_match(m):
+        sa = "-1" if m.group(1) == "-" else "1"
+        a = m.group(2) or "1"
+        sb = "-1" if m.group(3) == "-" else "1"
+        b = m.group(4) or "1"
+        return f"Psi({a},{b},{sa},{sb})"
+
+    s = re.sub(r'\\Psi\s*\(\s*(-?)q\^?\{?([0-9X]*)\}?\s*,\s*(-?)q\^?\{?([0-9X]*)\}?\s*\)', parse_psi_match, s)
+    s = re.sub(r'\\Psi\s*\(\s*(-?)([0-9X]+)\s*,\s*(-?)([0-9X]+)\s*\)',
+               lambda m: f"Psi({m.group(2)},{m.group(4)},{'-1' if m.group(1)=='-' else '1'},{'-1' if m.group(3)=='-' else '1'})", s)
+               
     s = re.sub(r'f\s*\(\s*q\^?\{?([0-9X]*)\}?\s*,\s*q\^?\{?([0-9X]*)\}?\s*\)',
                lambda m: f"fab({m.group(1) or '1'},{m.group(2) or '1'})", s)
 
@@ -397,7 +407,7 @@ def _core_expansion_engine(latex_str, limit):
         "H": lambda k: gen_H(int(k), limit), 
         "R": lambda k: gen_R(int(k), limit),
         "fab": lambda a, b: gen_fab(int(a), int(b), limit), 
-        "Psi": lambda a, b: gen_Psi_ab(int(a), int(b), limit),
+        "Psi": lambda a, b, sa=1, sb=1: gen_Psi_ab(int(a), int(b), limit, int(sa), int(sb)),
         "__builtins__": {}
     }
 
@@ -1057,13 +1067,22 @@ def run_congruence_miner():
         st.latex(latex_input)
         st.divider()
 
-        st.markdown("### 🧮 Inject False Theta $\\Psi(a,b)$")
+        st.markdown("### 🧮 Inject False Theta $\\Psi(\\pm q^a, q^b)$")
         col_a, col_b = st.columns(2)
         psi_a = col_a.number_input("Parameter a (power of q)", value=1, min_value=0, key="psi_a")
         psi_b = col_b.number_input("Parameter b (power of q)", value=2, min_value=0, key="psi_b")
         
-        if st.button("Inject $\\Psi(q^a, q^b)$"):
-            st.session_state.miner_latex_input = rf"\Psi(q^{{{psi_a}}}, q^{{{psi_b}}})"
+        col_s, col_r = st.columns(2)
+        sign_a = col_s.selectbox("Sign of $q^a$", ["+", "-"], index=1, key="psi_sign_a")
+        is_recip = col_r.checkbox("Reciprocal $1/\\Psi$", value=True, key="psi_recip")
+        
+        if st.button("Inject $\\Psi$ Configuration"):
+            sign_str = "-" if sign_a == "-" else ""
+            psi_tex = rf"\Psi({sign_str}q^{{{psi_a}}}, q^{{{psi_b}}})"
+            if is_recip:
+                st.session_state.miner_latex_input = rf"\frac{{1}}{{{psi_tex}}}"
+            else:
+                st.session_state.miner_latex_input = psi_tex
             st.rerun()
             
         st.divider()
@@ -1119,7 +1138,7 @@ def run_congruence_miner():
                     def f(n): 
                         if int(n) <= 0: return QSeries([1] + [0]*limit, limit)
                         return QSeries(generate_base_pochhammer(int(n), limit), limit)
-                    return {"f": f, "q": q_obj, "X": x_val, "phi": lambda k: gen_phi(int(k), limit), "psi": lambda k: gen_psi(int(k), limit), "G": lambda k: gen_G(int(k), limit), "H": lambda k: gen_H(int(k), limit), "R": lambda k: gen_R(int(k), limit), "fab": lambda a, b: gen_fab(int(a), int(b), limit), "Psi": lambda a, b: gen_Psi_ab(int(a), int(b), limit), "__builtins__": {}}
+                    return {"f": f, "q": q_obj, "X": x_val, "phi": lambda k: gen_phi(int(k), limit), "psi": lambda k: gen_psi(int(k), limit), "G": lambda k: gen_G(int(k), limit), "H": lambda k: gen_H(int(k), limit), "R": lambda k: gen_R(int(k), limit), "fab": lambda a, b: gen_fab(int(a), int(b), limit), "Psi": lambda a, b, sa=1, sb=1: gen_Psi_ab(int(a), int(b), limit, int(sa), int(sb)), "__builtins__": {}}
                 
                 family_results = []
                 python_formula = latex_to_python(latex_input)
@@ -1332,7 +1351,7 @@ def run_euler_explorer():
                     if covered_indices == seq_len: break
 
                 if best_coverage > 0:
-                    num_str, den_str, unknown_r = [], [], []
+                    num_str, den_str, unknown_r = [], []
                     for r in range(1, best_stride + 1):
                         comp = best_components[r]
                         if comp["is_periodic"]:
